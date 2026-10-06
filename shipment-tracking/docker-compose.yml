@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    container_name: shipment_tracking_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=Nilesh@2026!Secure#MySQL
+      - MYSQL_DATABASE=shipment_tracking
+      - APP_ENV=production
+      - API_PORT=8000
+      - DEBUG=False
+      - AUTO_FALLBACK_SQLITE=True
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.0
+    container_name: shipment_tracking_mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=Nilesh@2026!Secure#MySQL
+      - MYSQL_DATABASE=shipment_tracking
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pNilesh@2026!Secure#MySQL"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_data:
