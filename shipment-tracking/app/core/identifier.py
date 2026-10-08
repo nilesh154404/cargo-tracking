@@ -59,6 +59,66 @@ AIRLINE_PREFIX_MAP: Dict[str, Dict[str, str]] = {
         "primary_provider": "generic_air",
         "fallback_providers": "",
     },
+    "312": {
+        "carrier_code": "6E",
+        "name": "IndiGo Cargo",
+        "primary_provider": "indigo_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "098": {
+        "carrier_code": "AI",
+        "name": "Air India Cargo",
+        "primary_provider": "air_india_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "603": {
+        "carrier_code": "UL",
+        "name": "SriLankan Cargo",
+        "primary_provider": "srilankan_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "141": {
+        "carrier_code": "FZ",
+        "name": "FlyDubai Cargo",
+        "primary_provider": "flydubai_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "235": {
+        "carrier_code": "TK",
+        "name": "Turkish Cargo",
+        "primary_provider": "turkish_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "672": {
+        "carrier_code": "BI",
+        "name": "Royal Brunei Airlines Cargo",
+        "primary_provider": "royal_brunei_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "406": {
+        "carrier_code": "5X",
+        "name": "UPS Air Cargo",
+        "primary_provider": "ups_air_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "071": {
+        "carrier_code": "ET",
+        "name": "Ethiopian Airlines Cargo",
+        "primary_provider": "ethiopian_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "217": {
+        "carrier_code": "TG",
+        "name": "Thai Cargo",
+        "primary_provider": "thai_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "157": {
+        "carrier_code": "QR",
+        "name": "Qatar Airways Cargo",
+        "primary_provider": "qatar_cargo",
+        "fallback_providers": "generic_air",
+    },
 }
 
 SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
@@ -125,7 +185,7 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
 }
 
 
-LIVE_SUPPORTED_AIR_PROVIDERS = {"cathay_cargo", "singapore_airlines", "jal_cargo"}
+LIVE_SUPPORTED_AIR_PROVIDERS = {"cathay_cargo", "singapore_airlines", "jal_cargo", "indigo_cargo", "air_india_cargo", "srilankan_cargo", "flydubai_cargo", "turkish_cargo", "lufthansa_cargo", "royal_brunei_cargo", "ups_air_cargo", "ethiopian_cargo", "thai_cargo", "qatar_cargo"}
 LIVE_SUPPORTED_SEA_PROVIDERS = {"msc", "ldb_container", "one_line"}
 
 
