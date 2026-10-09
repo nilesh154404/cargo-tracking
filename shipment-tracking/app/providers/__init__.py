@@ -26,6 +26,8 @@ from app.providers.air.generic_air import GenericAirProvider
 from app.providers.air.silk_way_west_cargo import SilkWayWestCargoProvider
 from app.providers.air.iag_cargo import IagCargoProvider
 from app.providers.air.champ_cargo import ChampCargoProvider
+from app.providers.air.maskargo import MasKargoProvider
+from app.providers.air.virgin_atlantic_cargo import VirginAtlanticCargoProvider
 from app.providers.sea.maersk import MaerskProvider
 from app.providers.sea.msc import MscProvider
 from app.providers.sea.ldb_container import LdbContainerProvider
@@ -59,6 +61,8 @@ _REGISTRY: Dict[str, BaseProvider] = {
     "silk_way_west_cargo": SilkWayWestCargoProvider(),
     "iag_cargo": IagCargoProvider(),
     "champ_cargo": ChampCargoProvider(),
+    "maskargo": MasKargoProvider(),
+    "virgin_atlantic_cargo": VirginAtlanticCargoProvider(),
     "generic_air": GenericAirProvider(),
     "maersk": MaerskProvider(),
     "msc": MscProvider(),

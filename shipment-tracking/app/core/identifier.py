@@ -137,6 +137,12 @@ AIRLINE_PREFIX_MAP: Dict[str, Dict[str, str]] = {
         "primary_provider": "dhl_aviation_cargo",
         "fallback_providers": "generic_air",
     },
+    "932": {
+        "carrier_code": "VS",
+        "name": "Virgin Atlantic Cargo",
+        "primary_provider": "virgin_atlantic_cargo",
+        "fallback_providers": "generic_air",
+    },
     "607": {
         "carrier_code": "EY",
         "name": "Etihad Cargo",
@@ -183,6 +189,12 @@ AIRLINE_PREFIX_MAP: Dict[str, Dict[str, str]] = {
         "carrier_code": "GF",
         "name": "Gulf Air",
         "primary_provider": "champ_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "232": {
+        "carrier_code": "MH",
+        "name": "Malaysia Airlines",
+        "primary_provider": "maskargo",
         "fallback_providers": "generic_air",
     },
 }
@@ -251,7 +263,7 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
 }
 
 
-LIVE_SUPPORTED_AIR_PROVIDERS = {"cathay_cargo", "singapore_airlines", "jal_cargo", "indigo_cargo", "air_india_cargo", "srilankan_cargo", "flydubai_cargo", "turkish_cargo", "lufthansa_cargo", "royal_brunei_cargo", "ups_air_cargo", "ethiopian_cargo", "thai_cargo", "qatar_cargo", "dhl_aviation_cargo", "etihad_cargo", "kuwait_airways", "air_asia", "azul_cargo", "aeroflot_cargo", "afcom_cargo", "silk_way_west_cargo", "iag_cargo", "champ_cargo"}
+LIVE_SUPPORTED_AIR_PROVIDERS = {"cathay_cargo", "singapore_airlines", "jal_cargo", "indigo_cargo", "air_india_cargo", "srilankan_cargo", "flydubai_cargo", "turkish_cargo", "lufthansa_cargo", "royal_brunei_cargo", "ups_air_cargo", "ethiopian_cargo", "thai_cargo", "qatar_cargo", "dhl_aviation_cargo", "etihad_cargo", "kuwait_airways", "air_asia", "azul_cargo", "aeroflot_cargo", "afcom_cargo", "silk_way_west_cargo", "iag_cargo", "champ_cargo", "maskargo", "virgin_atlantic_cargo"}
 LIVE_SUPPORTED_SEA_PROVIDERS = {"msc", "ldb_container", "one_line"}
 
 
