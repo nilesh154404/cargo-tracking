@@ -101,6 +101,12 @@ AIRLINE_PREFIX_MAP: Dict[str, Dict[str, str]] = {
         "primary_provider": "ups_air_cargo",
         "fallback_providers": "generic_air",
     },
+    "198": {
+        "carrier_code": "AFCOM",
+        "name": "Afcom Cargo",
+        "primary_provider": "afcom_cargo",
+        "fallback_providers": "generic_air",
+    },
     "071": {
         "carrier_code": "ET",
         "name": "Ethiopian Airlines Cargo",
@@ -117,6 +123,66 @@ AIRLINE_PREFIX_MAP: Dict[str, Dict[str, str]] = {
         "carrier_code": "QR",
         "name": "Qatar Airways Cargo",
         "primary_provider": "qatar_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "615": {
+        "carrier_code": "DHL",
+        "name": "DHL Aviation Cargo",
+        "primary_provider": "dhl_aviation_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "936": {
+        "carrier_code": "D0",
+        "name": "DHL Air",
+        "primary_provider": "dhl_aviation_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "607": {
+        "carrier_code": "EY",
+        "name": "Etihad Cargo",
+        "primary_provider": "etihad_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "229": {
+        "carrier_code": "KU",
+        "name": "Kuwait Airways Cargo",
+        "primary_provider": "kuwait_airways",
+        "fallback_providers": "generic_air",
+    },
+    "807": {
+        "carrier_code": "AK",
+        "name": "AirAsia Cargo",
+        "primary_provider": "air_asia",
+        "fallback_providers": "generic_air",
+    },
+    "555": {
+        "carrier_code": "SU",
+        "name": "Aeroflot Cargo",
+        "primary_provider": "aeroflot_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "577": {
+        "carrier_code": "AD",
+        "name": "Azul Cargo",
+        "primary_provider": "azul_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "501": {
+        "carrier_code": "7L",
+        "name": "Silk Way West Airlines",
+        "primary_provider": "silk_way_west_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "125": {
+        "carrier_code": "BA",
+        "name": "IAG Cargo",
+        "primary_provider": "iag_cargo",
+        "fallback_providers": "generic_air",
+    },
+    "072": {
+        "carrier_code": "GF",
+        "name": "Gulf Air",
+        "primary_provider": "champ_cargo",
         "fallback_providers": "generic_air",
     },
 }
@@ -185,7 +251,7 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
 }
 
 
-LIVE_SUPPORTED_AIR_PROVIDERS = {"cathay_cargo", "singapore_airlines", "jal_cargo", "indigo_cargo", "air_india_cargo", "srilankan_cargo", "flydubai_cargo", "turkish_cargo", "lufthansa_cargo", "royal_brunei_cargo", "ups_air_cargo", "ethiopian_cargo", "thai_cargo", "qatar_cargo"}
+LIVE_SUPPORTED_AIR_PROVIDERS = {"cathay_cargo", "singapore_airlines", "jal_cargo", "indigo_cargo", "air_india_cargo", "srilankan_cargo", "flydubai_cargo", "turkish_cargo", "lufthansa_cargo", "royal_brunei_cargo", "ups_air_cargo", "ethiopian_cargo", "thai_cargo", "qatar_cargo", "dhl_aviation_cargo", "etihad_cargo", "kuwait_airways", "air_asia", "azul_cargo", "aeroflot_cargo", "afcom_cargo", "silk_way_west_cargo", "iag_cargo", "champ_cargo"}
 LIVE_SUPPORTED_SEA_PROVIDERS = {"msc", "ldb_container", "one_line"}
 
 

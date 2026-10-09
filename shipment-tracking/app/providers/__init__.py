@@ -15,7 +15,17 @@ from app.providers.air.ups_air_cargo import UpsAirCargoProvider
 from app.providers.air.ethiopian_cargo import EthiopianCargoProvider
 from app.providers.air.thai_cargo import ThaiCargoProvider
 from app.providers.air.qatar_cargo import QatarCargoProvider
+from app.providers.air.dhl_aviation_cargo import DHLAviationCargoProvider
+from app.providers.air.etihad_cargo import EtihadCargoProvider
+from app.providers.air.kuwait_airways import KuwaitAirwaysProvider
+from app.providers.air.air_asia import AirAsiaProvider
+from app.providers.air.azul_cargo import AzulCargoProvider
+from app.providers.air.aeroflot_cargo import AeroflotCargoProvider
+from app.providers.air.afcom_cargo import AfcomCargoProvider
 from app.providers.air.generic_air import GenericAirProvider
+from app.providers.air.silk_way_west_cargo import SilkWayWestCargoProvider
+from app.providers.air.iag_cargo import IagCargoProvider
+from app.providers.air.champ_cargo import ChampCargoProvider
 from app.providers.sea.maersk import MaerskProvider
 from app.providers.sea.msc import MscProvider
 from app.providers.sea.ldb_container import LdbContainerProvider
@@ -39,6 +49,16 @@ _REGISTRY: Dict[str, BaseProvider] = {
     "ethiopian_cargo": EthiopianCargoProvider(),
     "thai_cargo": ThaiCargoProvider(),
     "qatar_cargo": QatarCargoProvider(),
+    "dhl_aviation_cargo": DHLAviationCargoProvider(),
+    "etihad_cargo": EtihadCargoProvider(),
+    "kuwait_airways": KuwaitAirwaysProvider(),
+    "air_asia": AirAsiaProvider(),
+    "azul_cargo": AzulCargoProvider(),
+    "aeroflot_cargo": AeroflotCargoProvider(),
+    "afcom_cargo": AfcomCargoProvider(),
+    "silk_way_west_cargo": SilkWayWestCargoProvider(),
+    "iag_cargo": IagCargoProvider(),
+    "champ_cargo": ChampCargoProvider(),
     "generic_air": GenericAirProvider(),
     "maersk": MaerskProvider(),
     "msc": MscProvider(),
