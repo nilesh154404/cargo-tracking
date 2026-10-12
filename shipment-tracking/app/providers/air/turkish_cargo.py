@@ -109,6 +109,8 @@ class TurkishCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
 
         try:
             async with httpx.AsyncClient(
@@ -135,10 +137,12 @@ class TurkishCargoProvider(BaseProvider):
                     ]
                 }
 
+                curl_cmd = self.build_curl_command("POST", TRACKING_URL, headers=API_HEADERS, body=payload)
                 resp = await client.post(
                     TRACKING_URL, json=payload, headers=API_HEADERS
                 )
                 resp.raise_for_status()
+                response_text = resp.text
                 data = resp.json()
 
                 latency = round((time.time() - start_time) * 1000, 2)
@@ -153,11 +157,16 @@ class TurkishCargoProvider(BaseProvider):
                         status_code=resp.status_code,
                         error=f"Turkish Cargo API error: {error_msg}",
                         latency_ms=latency,
+                        request_curl=curl_cmd,
+                        response_body=response_text,
                     )
 
-                return self._parse_tracking_response(
+                result = self._parse_tracking_response(
                     data=data, prefix=prefix, serial=serial, latency=latency
                 )
+                result.request_curl = curl_cmd
+                result.response_body = response_text
+                return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -167,6 +176,8 @@ class TurkishCargoProvider(BaseProvider):
                 status_code=408,
                 error="Turkish Cargo tracking request timed out.",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.HTTPStatusError as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -177,6 +188,8 @@ class TurkishCargoProvider(BaseProvider):
                 status_code=exc.response.status_code,
                 error=str(exc),
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -187,6 +200,8 @@ class TurkishCargoProvider(BaseProvider):
                 status_code=500,
                 error=str(exc),
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
     # ── Response Parsing ─────────────────────────────────────────────

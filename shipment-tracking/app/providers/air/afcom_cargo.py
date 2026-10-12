@@ -23,18 +23,36 @@ class AfcomCargoProvider(BaseProvider):
         super().__init__()
         self.url = "https://booking.afcomcargo.com/FrmAWBTracking.aspx"
 
-    async def track(self, tracking_number: str, prefix: str = "", serial: str = "", **kwargs) -> ProviderResult:
+    async def track(
+        self,
+        prefix: str = "",
+        serial: str = "",
+        tracking_number: str = "",
+        language: str = "en-us",
+        force_refresh: bool = False,
+        **kwargs,
+    ) -> ProviderResult:
         """
         Fetch tracking data for Afcom Cargo.
         """
+        if not prefix or not serial:
+            if tracking_number and "-" in tracking_number:
+                prefix, serial = tracking_number.split("-", 1)
+            elif tracking_number and len(tracking_number) >= 11:
+                prefix, serial = tracking_number[:3], tracking_number[3:]
+
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         async with httpx.AsyncClient(verify=False) as client:
             try:
                 awb = serial
                 # Step 1: GET request to retrieve ASP.NET hidden fields
                 logger.info(f"[AfcomCargo] Fetching initial page for {prefix}-{awb}")
+                curl_cmd = self.build_curl_command("GET", self.url)
                 get_response = await client.get(self.url)
                 get_response.raise_for_status()
+                response_text = get_response.text
 
                 soup = BeautifulSoup(get_response.text, 'html.parser')
                 viewstate = soup.find('input', id='__VIEWSTATE')
@@ -63,8 +81,10 @@ class AfcomCargoProvider(BaseProvider):
                     data['__EVENTVALIDATION'] = event_val
 
                 logger.info(f"[AfcomCargo] Submitting POST for {prefix}-{awb}")
+                curl_cmd = self.build_curl_command("POST", self.url, body=data)
                 post_response = await client.post(self.url, data=data)
                 post_response.raise_for_status()
+                response_text = post_response.text
 
                 # Parse the returned HTML
                 post_soup = BeautifulSoup(post_response.text, 'html.parser')
@@ -81,7 +101,9 @@ class AfcomCargoProvider(BaseProvider):
                         events=[],
                         latest_event=None,
                         raw_data={"source": "Afcom Cargo"},
-                        latency_ms=round((time.time() - start_time) * 1000, 2)
+                        latency_ms=round((time.time() - start_time) * 1000, 2),
+                        request_curl=curl_cmd,
+                        response_body=response_text,
                     )
 
                 origin_elem = post_soup.find('span', id='lblOrigin')
@@ -113,21 +135,26 @@ class AfcomCargoProvider(BaseProvider):
                     events=events,
                     latest_event=latest_event,
                     raw_data={"source": "Afcom Cargo"},
-                    latency_ms=round((time.time() - start_time) * 1000, 2)
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
             except httpx.HTTPError as e:
                 logger.error(f"[AfcomCargo] HTTP error for {prefix}-{awb}: {str(e)}")
+                resp_body = e.response.text if hasattr(e, "response") else response_text
                 return ProviderResult(
                     success=False,
                     provider_name=self.name,
-                    status_code=500,
+                    status_code=e.response.status_code if hasattr(e, "response") else 500,
                     status="HTTP_ERROR",
                     error=str(e),
                     events=[],
                     latest_event=None,
                     raw_data={"source": "Afcom Cargo"},
-                    latency_ms=round((time.time() - start_time) * 1000, 2)
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                    request_curl=curl_cmd,
+                    response_body=resp_body,
                 )
             except Exception as e:
                 logger.error(f"[AfcomCargo] Error tracking {prefix}-{awb}: {str(e)}")
@@ -140,7 +167,9 @@ class AfcomCargoProvider(BaseProvider):
                     events=[],
                     latest_event=None,
                     raw_data={"source": "Afcom Cargo"},
-                    latency_ms=round((time.time() - start_time) * 1000, 2)
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
     def _parse_history(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:

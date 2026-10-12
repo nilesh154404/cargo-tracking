@@ -115,6 +115,8 @@ class UpsAirCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
 
         if prefix != "406":
             latency = round((time.time() - start_time) * 1000, 2)
@@ -124,6 +126,8 @@ class UpsAirCargoProvider(BaseProvider):
                 status_code=400,
                 error=f"Prefix '{prefix}' not handled by UPS Air Cargo (expects 406)",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
         params = {
@@ -136,9 +140,11 @@ class UpsAirCargoProvider(BaseProvider):
                 timeout=20.0, verify=True, follow_redirects=True
             ) as client:
                 logger.info(f"UPS Air Cargo: GET {TRACKING_URL} for {prefix}-{serial}")
+                curl_cmd = self.build_curl_command("GET", TRACKING_URL, headers=UPS_HEADERS)
                 resp = await client.get(TRACKING_URL, params=params, headers=UPS_HEADERS)
 
             latency = round((time.time() - start_time) * 1000, 2)
+            response_text = resp.text
 
             if resp.status_code != 200:
                 return ProviderResult(
@@ -147,9 +153,14 @@ class UpsAirCargoProvider(BaseProvider):
                     status_code=resp.status_code,
                     error=f"UPS Air Cargo HTTP {resp.status_code}",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
-            return self._parse_html(resp.text, prefix, serial, latency)
+            result = self._parse_html(resp.text, prefix, serial, latency)
+            result.request_curl = curl_cmd
+            result.response_body = response_text
+            return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -159,6 +170,8 @@ class UpsAirCargoProvider(BaseProvider):
                 status_code=408,
                 error="UPS Air Cargo tracking request timed out.",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.RequestError as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -168,6 +181,8 @@ class UpsAirCargoProvider(BaseProvider):
                 status_code=500,
                 error=f"Network exception connecting to UPS Air Cargo: {exc}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -178,6 +193,8 @@ class UpsAirCargoProvider(BaseProvider):
                 status_code=500,
                 error=f"Error tracking UPS Air Cargo shipment: {exc}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
     # ── HTML Parsing ──────────────────────────────────────────────────

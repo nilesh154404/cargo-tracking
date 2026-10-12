@@ -24,8 +24,24 @@ class AeroflotCargoProvider(BaseProvider):
             return "Bkd"
         return ""
 
-    async def track(self, tracking_number: str, prefix: str = "", serial: str = "", **kwargs) -> ProviderResult:
+    async def track(
+        self,
+        prefix: str = "",
+        serial: str = "",
+        tracking_number: str = "",
+        language: str = "en-us",
+        force_refresh: bool = False,
+        **kwargs,
+    ) -> ProviderResult:
+        if not prefix or not serial:
+            if tracking_number and "-" in tracking_number:
+                prefix, serial = tracking_number.split("-", 1)
+            elif tracking_number and len(tracking_number) >= 11:
+                prefix, serial = tracking_number[:3], tracking_number[3:]
+
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         base_url = "https://www.moscow-cargo.com/index.php/en/"
         api_url = "https://www.moscow-cargo.com/intapi/statusawb_v8"
         
@@ -34,8 +50,10 @@ class AeroflotCargoProvider(BaseProvider):
             
             async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
                 # 1. Fetch CSRF token from homepage
+                curl_cmd = self.build_curl_command("GET", base_url)
                 r1 = await client.get(base_url)
                 r1.raise_for_status()
+                response_text = r1.text
                 
                 token_match = re.search(r'name="_token".*?value="([^"]+)"', r1.text)
                 if not token_match:
@@ -44,7 +62,9 @@ class AeroflotCargoProvider(BaseProvider):
                         provider_name=self.name,
                         status_code=500,
                         error="Could not extract CSRF token from Aeroflot (Moscow Cargo) portal.",
-                        latency_ms=round((time.time() - start_time) * 1000, 2)
+                        latency_ms=round((time.time() - start_time) * 1000, 2),
+                        request_curl=curl_cmd,
+                        response_body=response_text,
                     )
                 
                 csrf_token = token_match.group(1)
@@ -59,8 +79,10 @@ class AeroflotCargoProvider(BaseProvider):
                     "version": "7.7"
                 }
                 
+                curl_cmd = self.build_curl_command("POST", api_url, body=payload)
                 r2 = await client.post(api_url, data=payload)
                 r2.raise_for_status()
+                response_text = r2.text
                 
                 data = r2.json()
                 
@@ -71,7 +93,9 @@ class AeroflotCargoProvider(BaseProvider):
                         status_code=404,
                         status="NOT_FOUND",
                         error=f"No data found for {prefix}-{serial} on Aeroflot Cargo.",
-                        latency_ms=round((time.time() - start_time) * 1000, 2)
+                        latency_ms=round((time.time() - start_time) * 1000, 2),
+                        request_curl=curl_cmd,
+                        response_body=response_text,
                     )
                     
                 cargo_data = data["data"]
@@ -132,7 +156,9 @@ class AeroflotCargoProvider(BaseProvider):
                     events=events,
                     latest_event=latest_event,
                     raw_data={"url": api_url},
-                    latency_ms=round((time.time() - start_time) * 1000, 2)
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
         except httpx.TimeoutException:
@@ -141,15 +167,20 @@ class AeroflotCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="Aeroflot tracking request timed out.",
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.HTTPStatusError as exc:
+            resp_body = exc.response.text if hasattr(exc, "response") else response_text
             return ProviderResult(
                 success=False,
                 provider_name=self.name,
-                status_code=exc.response.status_code,
+                status_code=exc.response.status_code if hasattr(exc, "response") else 500,
                 error=str(exc),
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=resp_body,
             )
         except Exception as exc:
             logger.error(f"Aeroflot Cargo tracking error: {exc}", exc_info=True)
@@ -158,5 +189,7 @@ class AeroflotCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )

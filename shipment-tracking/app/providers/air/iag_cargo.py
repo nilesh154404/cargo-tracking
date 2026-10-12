@@ -12,8 +12,24 @@ class IagCargoProvider(BaseProvider):
     name = "iag_cargo"
     mode = "AIR"
     
-    async def track(self, tracking_number: str, prefix: str = "", serial: str = "", **kwargs) -> ProviderResult:
+    async def track(
+        self,
+        prefix: str = "",
+        serial: str = "",
+        tracking_number: str = "",
+        language: str = "en-us",
+        force_refresh: bool = False,
+        **kwargs,
+    ) -> ProviderResult:
+        if not prefix or not serial:
+            if tracking_number and "-" in tracking_number:
+                prefix, serial = tracking_number.split("-", 1)
+            elif tracking_number and len(tracking_number) >= 11:
+                prefix, serial = tracking_number[:3], tracking_number[3:]
+
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         # Ensure we have the hyphen format if just given 11 digits
         if not tracking_number or len(tracking_number.replace("-", "")) != 11:
             tracking_number = f"{prefix}-{serial}"
@@ -30,8 +46,10 @@ class IagCargoProvider(BaseProvider):
         try:
             logger.info(f"IAG Cargo: Tracking {tracking_number}...")
             async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                curl_cmd = self.build_curl_command("GET", url, headers=headers)
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
+                response_text = resp.text
                 data = resp.json()
                 
                 awb = data.get("awb", {})
@@ -120,7 +138,9 @@ class IagCargoProvider(BaseProvider):
                     events=events,
                     latest_event=latest_event,
                     raw_data=data,
-                    latency_ms=round((time.time() - start_time) * 1000, 2)
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
         except httpx.TimeoutException:
@@ -129,15 +149,20 @@ class IagCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="IAG Cargo tracking request timed out.",
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.HTTPStatusError as exc:
+            resp_body = exc.response.text if hasattr(exc, "response") else response_text
             return ProviderResult(
                 success=False,
                 provider_name=self.name,
-                status_code=exc.response.status_code,
+                status_code=exc.response.status_code if hasattr(exc, "response") else 500,
                 error=str(exc),
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=resp_body,
             )
         except Exception as exc:
             logger.error(f"IAG Cargo tracking error: {exc}", exc_info=True)
@@ -146,5 +171,7 @@ class IagCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )

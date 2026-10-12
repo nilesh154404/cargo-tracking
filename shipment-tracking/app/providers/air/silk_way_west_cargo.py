@@ -12,8 +12,24 @@ class SilkWayWestCargoProvider(BaseProvider):
     name = "silk_way_west_cargo"
     mode = "AIR"
     
-    async def track(self, tracking_number: str, prefix: str = "", serial: str = "", **kwargs) -> ProviderResult:
+    async def track(
+        self,
+        prefix: str = "",
+        serial: str = "",
+        tracking_number: str = "",
+        language: str = "en-us",
+        force_refresh: bool = False,
+        **kwargs,
+    ) -> ProviderResult:
+        if not prefix or not serial:
+            if tracking_number and "-" in tracking_number:
+                prefix, serial = tracking_number.split("-", 1)
+            elif tracking_number and len(tracking_number) >= 11:
+                prefix, serial = tracking_number[:3], tracking_number[3:]
+
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         
         info_url = f"https://sww.enxt.solutions/api/TrackAndTrace/{prefix}-{serial}"
         events_url = f"https://sww.enxt.solutions/api/Messages/GetFSUData?prefix={prefix}&serial={serial}"
@@ -21,12 +37,18 @@ class SilkWayWestCargoProvider(BaseProvider):
         try:
             logger.info(f"Silk Way West Cargo: Tracking {prefix}-{serial}...")
             async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                curl_info = self.build_curl_command("GET", info_url)
+                curl_cmd = curl_info
                 info_resp = await client.get(info_url)
                 info_resp.raise_for_status()
+                response_text = info_resp.text
                 info_data = info_resp.json()
                 
+                curl_events = self.build_curl_command("GET", events_url)
+                curl_cmd = f"{curl_info}\n\n{curl_events}"
                 events_resp = await client.get(events_url)
                 events_resp.raise_for_status()
+                response_text = f"--- INFO ---\n{info_resp.text}\n\n--- EVENTS ---\n{events_resp.text}"
                 events_data = events_resp.json()
                 
                 origin = ""
@@ -48,10 +70,6 @@ class SilkWayWestCargoProvider(BaseProvider):
                     dest = airports.get(last_route_dest_id, "")
 
                 events = []
-                # Sort events by timestamp or sequence if needed, but the list usually comes in reverse or chronological.
-                # The data shows latest events first maybe, or we should sort by Time_Stamp
-                # Actually, in the user's snippet, DEP is at the top (Sep 24) and earlier ones are below.
-                # Let's sort them ascending by date.
                 for ev in events_data:
                     ts = ev.get("Time_Stamp")
                     station = ev.get("Origin_IATA", "")
@@ -103,7 +121,9 @@ class SilkWayWestCargoProvider(BaseProvider):
                     events=events,
                     latest_event=latest_event,
                     raw_data={"info": info_data, "events": events_data},
-                    latency_ms=round((time.time() - start_time) * 1000, 2)
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
         except httpx.TimeoutException:
@@ -112,15 +132,20 @@ class SilkWayWestCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="Silk Way West Cargo tracking request timed out.",
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.HTTPStatusError as exc:
+            resp_body = exc.response.text if hasattr(exc, "response") else response_text
             return ProviderResult(
                 success=False,
                 provider_name=self.name,
-                status_code=exc.response.status_code,
+                status_code=exc.response.status_code if hasattr(exc, "response") else 500,
                 error=str(exc),
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=resp_body,
             )
         except Exception as exc:
             logger.error(f"Silk Way West Cargo tracking error: {exc}", exc_info=True)
@@ -129,5 +154,7 @@ class SilkWayWestCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )

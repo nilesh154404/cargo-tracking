@@ -26,6 +26,8 @@ class KuwaitAirwaysProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         
         url = f"https://services.kuwaitairways.com/cargo/api/GetCargoInfo/{prefix}/{serial}/en"
 
@@ -38,9 +40,11 @@ class KuwaitAirwaysProvider(BaseProvider):
         
         try:
             logger.info(f"KuwaitAirways: Fetching tracking data for {prefix}-{serial}...")
+            curl_cmd = self.build_curl_command("GET", url, headers=headers)
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
+                response_text = response.text
 
             data = response.json()
             latency = int((time.time() - start_time) * 1000)
@@ -51,7 +55,9 @@ class KuwaitAirwaysProvider(BaseProvider):
                     provider_name=self.name,
                     status_code=404,
                     error=data.get("responseText") or "Tracking not found",
-                    latency_ms=latency
+                    latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
             origin = data.get("origin")
@@ -111,7 +117,9 @@ class KuwaitAirwaysProvider(BaseProvider):
                 events=events,
                 latest_event=latest_event,
                 raw_data=data,
-                latency_ms=latency
+                latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
         except httpx.HTTPError as e:
@@ -121,7 +129,9 @@ class KuwaitAirwaysProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=f"HTTP Error: {str(e)}",
-                latency_ms=int((time.time() - start_time) * 1000)
+                latency_ms=int((time.time() - start_time) * 1000),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as e:
             logger.error(f"KuwaitAirways Parsing Error: {e}")

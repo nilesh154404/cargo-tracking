@@ -28,15 +28,33 @@ class AirAsiaProvider(BaseProvider):
             return "Rcf"
         return ""
         
-    async def track(self, tracking_number: str, prefix: str = "", serial: str = "", **kwargs) -> ProviderResult:
+    async def track(
+        self,
+        prefix: str = "",
+        serial: str = "",
+        tracking_number: str = "",
+        language: str = "en-us",
+        force_refresh: bool = False,
+        **kwargs,
+    ) -> ProviderResult:
+        if not prefix or not serial:
+            if tracking_number and "-" in tracking_number:
+                prefix, serial = tracking_number.split("-", 1)
+            elif tracking_number and len(tracking_number) >= 11:
+                prefix, serial = tracking_number[:3], tracking_number[3:]
+
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         url = "https://airasia.smartkargo.com/FrmAWBTracking.aspx"
         
         try:
             logger.info(f"AirAsia: Tracking {prefix}-{serial}...")
             async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                curl_cmd = self.build_curl_command("GET", url)
                 resp = await client.get(url)
                 resp.raise_for_status()
+                response_text = resp.text
                 
                 soup = BeautifulSoup(resp.text, 'html.parser')
                 viewstate_tag = soup.find('input', {'name': '__VIEWSTATE'})
@@ -48,7 +66,9 @@ class AirAsiaProvider(BaseProvider):
                         provider_name=self.name,
                         status_code=500,
                         error="Failed to extract ASP.NET viewstate variables.",
-                        latency_ms=round((time.time() - start_time) * 1000, 2)
+                        latency_ms=round((time.time() - start_time) * 1000, 2),
+                        request_curl=curl_cmd,
+                        response_body=response_text,
                     )
                 
                 payload = {
@@ -60,8 +80,10 @@ class AirAsiaProvider(BaseProvider):
                     "hdnIsAlaska": "false"
                 }
                 
+                curl_cmd = self.build_curl_command("POST", url, body=payload)
                 post_resp = await client.post(url, data=payload)
                 post_resp.raise_for_status()
+                response_text = post_resp.text
                 post_soup = BeautifulSoup(post_resp.text, 'html.parser')
                 
                 origin_tag = post_soup.find('span', id='lblOrigin')
@@ -76,7 +98,9 @@ class AirAsiaProvider(BaseProvider):
                         status_code=404,
                         status="NOT_FOUND",
                         error=f"No tracking data found for AWB {prefix}-{serial} on AirAsia.",
-                        latency_ms=round((time.time() - start_time) * 1000, 2)
+                        latency_ms=round((time.time() - start_time) * 1000, 2),
+                        request_curl=curl_cmd,
+                        response_body=response_text,
                     )
                 
                 origin = origin_tag.text.strip()
@@ -145,7 +169,9 @@ class AirAsiaProvider(BaseProvider):
                     events=events,
                     latest_event=latest_event,
                     raw_data={"url": url, "html_length": len(post_resp.text)},
-                    latency_ms=round((time.time() - start_time) * 1000, 2)
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
         except httpx.TimeoutException:
@@ -154,15 +180,20 @@ class AirAsiaProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="AirAsia tracking request timed out.",
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.HTTPStatusError as exc:
+            resp_body = exc.response.text if hasattr(exc, "response") else response_text
             return ProviderResult(
                 success=False,
                 provider_name=self.name,
-                status_code=exc.response.status_code,
+                status_code=exc.response.status_code if hasattr(exc, "response") else 500,
                 error=str(exc),
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=resp_body,
             )
         except Exception as exc:
             logger.error(f"AirAsia tracking error: {exc}", exc_info=True)
@@ -171,5 +202,7 @@ class AirAsiaProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
-                latency_ms=round((time.time() - start_time) * 1000, 2)
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                request_curl=curl_cmd,
+                response_body=response_text,
             )

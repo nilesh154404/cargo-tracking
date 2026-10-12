@@ -42,16 +42,23 @@ class DHLAviationCargoProvider(BaseProvider):
             "upgrade-insecure-requests": "1",
         }
 
+        curl_cmd = self.build_curl_command("GET", url, headers=headers)
+        response_text = None
+
         try:
             logger.info(f"DHLAviation: Fetching tracking page for {prefix}-{serial}...")
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
                 response = await client.get(url, headers=headers)
+                response_text = response.text
                 response.raise_for_status()
 
             html = response.text
             latency = round((time.time() - start_time) * 1000, 2)
 
-            return self._parse_html(html, prefix, serial, latency)
+            result = self._parse_html(html, prefix, serial, latency)
+            result.request_curl = curl_cmd
+            result.response_body = response_text
+            return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -60,6 +67,8 @@ class DHLAviationCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="DHL Aviation Cargo tracking request timed out.",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except httpx.HTTPStatusError as exc:
@@ -70,6 +79,8 @@ class DHLAviationCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=exc.response.status_code,
                 error=f"HTTP Error: {exc}",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except Exception as exc:
@@ -80,6 +91,8 @@ class DHLAviationCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
 

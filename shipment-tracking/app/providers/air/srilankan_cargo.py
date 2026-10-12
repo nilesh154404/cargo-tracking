@@ -140,6 +140,7 @@ class SriLankanCargoProvider(BaseProvider):
                     GRAPHQL_URL, json=login_payload, headers=GRAPHQL_HEADERS
                 )
                 resp.raise_for_status()
+                response_text = resp.text
                 data = resp.json()
 
                 # Extract id_token from response
@@ -182,6 +183,8 @@ class SriLankanCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         awb_number = f"{prefix}{serial}"
 
         try:
@@ -195,6 +198,8 @@ class SriLankanCargoProvider(BaseProvider):
                     status_code=401,
                     error="SriLankan Cargo: Unable to obtain auth token via loginAsAnonymousUser.",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
             # ── Step 2: Execute GraphQL tracking query ────────────────
@@ -204,6 +209,8 @@ class SriLankanCargoProvider(BaseProvider):
                 "query": TRACKING_QUERY,
                 "variables": {"shipmentNumbers": [awb_number]},
             }
+
+            curl_cmd = self.build_curl_command("POST", GRAPHQL_URL, headers={**GRAPHQL_HEADERS, "cookie": "[MASKED]"}, body=graphql_payload)
 
             async with httpx.AsyncClient(
                 follow_redirects=True, timeout=30.0, verify=True
@@ -228,16 +235,20 @@ class SriLankanCargoProvider(BaseProvider):
                         )
 
                 resp.raise_for_status()
+                response_text = resp.text
                 latency = round((time.time() - start_time) * 1000, 2)
 
                 # ── Step 3: Parse the JSON response ───────────────────
                 data = resp.json()
-                return self._parse_graphql_response(
+                result = self._parse_graphql_response(
                     data=data,
                     prefix=prefix,
                     serial=serial,
                     latency=latency,
                 )
+                result.request_curl = curl_cmd
+                result.response_body = response_text
+                return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -247,6 +258,8 @@ class SriLankanCargoProvider(BaseProvider):
                 status_code=408,
                 error="SriLankan Cargo tracking request timed out.",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.HTTPStatusError as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -257,6 +270,8 @@ class SriLankanCargoProvider(BaseProvider):
                 status_code=exc.response.status_code,
                 error=str(exc),
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -267,6 +282,8 @@ class SriLankanCargoProvider(BaseProvider):
                 status_code=500,
                 error=str(exc),
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
     # ── Response Parsing ─────────────────────────────────────────────────

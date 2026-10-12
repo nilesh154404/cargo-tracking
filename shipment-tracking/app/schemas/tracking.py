@@ -49,6 +49,8 @@ class ProviderAttempt(BaseModel):
     http_status: Optional[int] = None
     latency_ms: float
     error: Optional[str] = None
+    request_curl: Optional[str] = None
+    response_body: Optional[str] = None
 
 
 class AgentDecisionTrail(BaseModel):

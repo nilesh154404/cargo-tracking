@@ -19,6 +19,9 @@ class VirginAtlanticCargoProvider(BaseProvider):
         clean_awb = tracking_number.replace("-", "")
         if not clean_awb and prefix and serial:
             clean_awb = f"{prefix}{serial}"
+
+        curl_parts = []
+        response_text = None
             
         try:
             logger.info(f"Virgin Atlantic Cargo: Tracking {tracking_number}...")
@@ -37,6 +40,7 @@ class VirginAtlanticCargoProvider(BaseProvider):
                 }
                 
                 data = "tenant=VS&client_id=mercator&client_secret="
+                curl_parts.append(self.build_curl_command("POST", token_url, headers=headers, body=data))
                 
                 resp = await client.post(token_url, headers=headers, content=data)
                 resp.raise_for_status()
@@ -63,6 +67,7 @@ class VirginAtlanticCargoProvider(BaseProvider):
                         "pageSize": 10
                     }
                 }
+                curl_parts.append(self.build_curl_command("POST", search_url, headers=search_headers, body=search_payload))
                 
                 search_resp = await client.post(search_url, headers=search_headers, json=search_payload)
                 search_resp.raise_for_status()
@@ -70,21 +75,27 @@ class VirginAtlanticCargoProvider(BaseProvider):
                 
                 orders = search_data.get("data", {}).get("order", [])
                 if not orders:
+                    response_text = search_resp.text
                     return ProviderResult(
                         success=False,
                         provider_name=self.name,
                         status_code=404,
                         error=f"No shipment found for AWB {tracking_number}",
+                        request_curl="\n\n".join(curl_parts),
+                        response_body=response_text,
                         latency_ms=round((time.time() - start_time) * 1000, 2)
                     )
                     
                 order_items = orders[0].get("orderItems", {}).get("orderItem", [])
                 if not order_items:
+                    response_text = search_resp.text
                     return ProviderResult(
                         success=False,
                         provider_name=self.name,
                         status_code=404,
                         error=f"No order items found for AWB {tracking_number}",
+                        request_curl="\n\n".join(curl_parts),
+                        response_body=response_text,
                         latency_ms=round((time.time() - start_time) * 1000, 2)
                     )
                     
@@ -94,9 +105,11 @@ class VirginAtlanticCargoProvider(BaseProvider):
                 
                 # 3. Get Details
                 details_url = f"https://myvs.virginatlanticcargo.com/api/order/services/cargo/v1/orders/b{order_ref}"
+                curl_parts.append(self.build_curl_command("GET", details_url, headers=search_headers))
                 details_resp = await client.get(details_url, headers=search_headers)
                 details_resp.raise_for_status()
                 details_data = details_resp.json()
+                response_text = details_resp.text
                 
                 items = details_data.get("data", {}).get("orderItems", {}).get("orderItem", [])
                 if not items:
@@ -187,6 +200,8 @@ class VirginAtlanticCargoProvider(BaseProvider):
                     events=events,
                     latest_event=latest_event,
                     raw_data=details_data,
+                    request_curl="\n\n".join(curl_parts),
+                    response_body=response_text,
                     latency_ms=round((time.time() - start_time) * 1000, 2)
                 )
 
@@ -196,6 +211,8 @@ class VirginAtlanticCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="Virgin Atlantic Cargo tracking request timed out.",
+                request_curl="\n\n".join(curl_parts) if curl_parts else None,
+                response_body=response_text,
                 latency_ms=round((time.time() - start_time) * 1000, 2)
             )
         except httpx.HTTPStatusError as exc:
@@ -204,6 +221,8 @@ class VirginAtlanticCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=exc.response.status_code,
                 error=str(exc),
+                request_curl="\n\n".join(curl_parts) if curl_parts else None,
+                response_body=exc.response.text if hasattr(exc, 'response') else response_text,
                 latency_ms=round((time.time() - start_time) * 1000, 2)
             )
         except Exception as exc:
@@ -213,5 +232,7 @@ class VirginAtlanticCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
+                request_curl="\n\n".join(curl_parts) if curl_parts else None,
+                response_body=response_text,
                 latency_ms=round((time.time() - start_time) * 1000, 2)
             )

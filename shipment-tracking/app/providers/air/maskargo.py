@@ -52,8 +52,18 @@ class MasKargoProvider(BaseProvider):
         
         try:
             logger.info(f"MasKargo: Fetching tracking data for {awb}...")
+
+            mas_url = f"https://www.maskargo.com/bin/mh/revamp/maskargo/shipment/tracking?awbShipmentTrackingNumber={awb}"
+            mas_headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Referer': f'https://www.maskargo.com/en/shipment-tracking.html?prefixNumber={awb[:3]}&awbNumber={awb[3:]}'
+            }
+            curl_cmd = self.build_curl_command("GET", mas_url, headers=mas_headers)
+
             # Run urllib blocking request in thread pool
             status_code, body = await asyncio.to_thread(self._fetch_sync, awb)
+            response_text = body
             
             latency = round((time.time() - start_time) * 1000, 2)
             
@@ -63,6 +73,8 @@ class MasKargoProvider(BaseProvider):
                     provider_name=self.name,
                     status_code=status_code,
                     error=f"HTTP Error: {body}",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                     latency_ms=latency,
                 )
 
@@ -74,10 +86,15 @@ class MasKargoProvider(BaseProvider):
                     status_code=404,
                     status="NOT_FOUND",
                     error=f"No tracking data found for AWB {awb}.",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                     latency_ms=latency,
                 )
 
-            return self._parse_json(data["data"], prefix, serial, latency)
+            result = self._parse_json(data["data"], prefix, serial, latency)
+            result.request_curl = curl_cmd
+            result.response_body = response_text
+            return result
 
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -87,6 +104,8 @@ class MasKargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
+                request_curl=curl_cmd if 'curl_cmd' in dir() else None,
+                response_body=response_text if 'response_text' in dir() else None,
                 latency_ms=latency,
             )
 

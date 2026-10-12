@@ -111,6 +111,8 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
             )
 
         awb_formatted = f"{prefix}-{serial}"
+        curl_parts = []
+        response_text = None
 
         try:
             async with httpx.AsyncClient(
@@ -119,10 +121,12 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
 
                 # ── Step 1: Quick status check ────────────────────────
                 status_payload = {"awbNumber": [awb_formatted], "airline": "SQ"}
+                curl_parts.append(self.build_curl_command("POST", STATUS_URL, headers=CCN_HEADERS, body=status_payload))
                 logger.info(f"SIACargo: Checking status for AWB {awb_formatted}...")
                 resp1 = await client.post(
                     STATUS_URL, json=status_payload, headers=CCN_HEADERS
                 )
+                response_text = resp1.text
 
                 if resp1.status_code != 200:
                     latency = round((time.time() - start_time) * 1000, 2)
@@ -131,6 +135,8 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
                         provider_name=self.name,
                         status_code=resp1.status_code,
                         error=f"CCN Exchange API HTTP {resp1.status_code}: {resp1.text[:200]}",
+                        request_curl="\n\n".join(curl_parts),
+                        response_body=response_text,
                         latency_ms=latency,
                     )
 
@@ -148,6 +154,8 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
                             f"No shipment records found for {awb_formatted} "
                             f"on Singapore Airlines Cargo. Please verify the tracking number."
                         ),
+                        request_curl="\n\n".join(curl_parts),
+                        response_body=response_text,
                         latency_ms=latency,
                     )
 
@@ -164,6 +172,8 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
                         provider_name=self.name,
                         status_code=404,
                         error=f"AWB {awb_formatted} not active or no route details available",
+                        request_curl="\n\n".join(curl_parts),
+                        response_body=response_text,
                         latency_ms=latency,
                     )
 
@@ -174,6 +184,7 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
                     "awbSuffix": serial,
                     "type": "public",
                 }
+                curl_parts.append(self.build_curl_command("POST", DETAILS_URL, headers=CCN_HEADERS, body=details_payload))
                 resp2 = await client.post(
                     DETAILS_URL, json=details_payload, headers=CCN_HEADERS
                 )
@@ -186,18 +197,25 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
                         f"SIACargo: Details API returned {resp2.status_code}, "
                         f"using status-only data."
                     )
-                    return self._parse_status_only(
+                    result = self._parse_status_only(
                         summary=summary, prefix=prefix, serial=serial, latency=latency
                     )
+                    result.request_curl = "\n\n".join(curl_parts)
+                    result.response_body = resp2.text
+                    return result
 
+                response_text = resp2.text
                 details = resp2.json()
-                return self._parse_details_response(
+                result = self._parse_details_response(
                     details=details,
                     summary=summary,
                     prefix=prefix,
                     serial=serial,
                     latency=latency,
                 )
+                result.request_curl = "\n\n".join(curl_parts)
+                result.response_body = response_text
+                return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -206,6 +224,8 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="Singapore Airlines Cargo tracking request timed out.",
+                request_curl="\n\n".join(curl_parts) if curl_parts else None,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except httpx.RequestError as exc:
@@ -215,6 +235,8 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=f"Network exception connecting to CCN Exchange: {exc}",
+                request_curl="\n\n".join(curl_parts) if curl_parts else None,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except Exception as exc:
@@ -225,6 +247,8 @@ class SingaporeAirlinesCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=f"Error tracking SIA Cargo shipment: {exc}",
+                request_curl="\n\n".join(curl_parts) if curl_parts else None,
+                response_body=response_text,
                 latency_ms=latency,
             )
 

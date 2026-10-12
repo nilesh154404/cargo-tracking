@@ -85,6 +85,8 @@ class CathayCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_parts = []
+        response_text = None
         try:
             token = await self._get_access_token(force_refresh=force_refresh)
             headers = dict(TRACKING_BASE_HEADERS)
@@ -96,9 +98,12 @@ class CathayCargoProvider(BaseProvider):
                 "languageId": language,
             }
 
+            curl_parts.append(self.build_curl_command("POST", TRACKING_URL, headers=headers, body=payload))
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(TRACKING_URL, headers=headers, json=payload)
                 latency = round((time.time() - start_time) * 1000, 2)
+                response_text = resp.text
 
                 if resp.status_code != 200:
                     return ProviderResult(
@@ -106,6 +111,8 @@ class CathayCargoProvider(BaseProvider):
                         provider_name=self.name,
                         status_code=resp.status_code,
                         error=f"Cathay API returned status {resp.status_code}: {resp.text[:300]}",
+                        request_curl="\n\n".join(curl_parts),
+                        response_body=response_text,
                         latency_ms=latency,
                     )
 
@@ -154,6 +161,8 @@ class CathayCargoProvider(BaseProvider):
                     events=events,
                     latest_event=latest_item,
                     raw_data=data,
+                    request_curl="\n\n".join(curl_parts),
+                    response_body=response_text,
                     latency_ms=latency,
                 )
 
@@ -164,5 +173,7 @@ class CathayCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
+                request_curl="\n\n".join(curl_parts) if curl_parts else None,
+                response_body=response_text,
                 latency_ms=latency,
             )

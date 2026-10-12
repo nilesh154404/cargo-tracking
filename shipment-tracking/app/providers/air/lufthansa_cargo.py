@@ -107,6 +107,8 @@ class LufthansaCargoProvider(BaseProvider):
         # AWB path: concatenate prefix + serial (no dash)
         awb_path = f"{prefix}{serial}"
         url = f"{API_BASE}/{awb_path}"
+        curl_cmd = self.build_curl_command("GET", url, headers=LH_HEADERS)
+        response_text = None
 
         try:
             async with httpx.AsyncClient(
@@ -116,6 +118,7 @@ class LufthansaCargoProvider(BaseProvider):
                 resp = await client.get(url, headers=LH_HEADERS)
 
             latency = round((time.time() - start_time) * 1000, 2)
+            response_text = resp.text
 
             if resp.status_code != 200:
                 return ProviderResult(
@@ -123,11 +126,16 @@ class LufthansaCargoProvider(BaseProvider):
                     provider_name=self.name,
                     status_code=resp.status_code,
                     error=f"Lufthansa Cargo API HTTP {resp.status_code}: {resp.text[:200]}",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                     latency_ms=latency,
                 )
 
             data = resp.json()
-            return self._parse_response(data, prefix, serial, latency)
+            result = self._parse_response(data, prefix, serial, latency)
+            result.request_curl = curl_cmd
+            result.response_body = response_text
+            return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -136,6 +144,8 @@ class LufthansaCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="Lufthansa Cargo tracking request timed out.",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except httpx.RequestError as exc:
@@ -145,6 +155,8 @@ class LufthansaCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=f"Network exception connecting to Lufthansa Cargo API: {exc}",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except Exception as exc:
@@ -155,6 +167,8 @@ class LufthansaCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=f"Error tracking Lufthansa Cargo shipment: {exc}",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
 

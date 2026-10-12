@@ -85,6 +85,8 @@ class ProviderExecutionLog(Base):
     status = Column(String(50), nullable=False)  # 'SUCCESS', 'FAILED', 'FALLBACK'
     http_status_code = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
+    request_curl = Column(Text, nullable=True)
+    response = Column(Text, nullable=True)
     latency_ms = Column(Float, nullable=True)
     created_at = Column(DateTime, default=utc_now)
 
