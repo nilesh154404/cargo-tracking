@@ -99,6 +99,11 @@ class DatabasePersistenceTool:
                 shipment.latest_event_status = latest_ev.get("status_message")
 
             for att in attempts:
+                # Truncate response_body to avoid exceeding TEXT column limits
+                resp_body = att.get("response_body")
+                if resp_body and len(resp_body) > 65000:
+                    resp_body = resp_body[:65000] + "\n... [TRUNCATED]"
+
                 log_entry = ProviderExecutionLog(
                     shipment_id=shipment.id,
                     tracking_number=tracking_number,
@@ -106,6 +111,8 @@ class DatabasePersistenceTool:
                     status=att.get("status", "UNKNOWN"),
                     http_status_code=att.get("http_status"),
                     error_message=att.get("error"),
+                    request_curl=att.get("request_curl"),
+                    response=resp_body,
                     latency_ms=att.get("latency_ms", 0.0),
                 )
                 db.add(log_entry)
@@ -118,6 +125,42 @@ class DatabasePersistenceTool:
             db.rollback()
             logger.error(f"Error persisting tracking snapshot to DB: {exc}")
             raise exc
+
+    @classmethod
+    def record_execution_logs(
+        cls,
+        db: Session,
+        tracking_number: str,
+        attempts: List[Dict[str, Any]],
+        shipment_id: Optional[int] = None,
+    ):
+        """Persists provider execution attempts (cURL and responses) to MySQL even when tracking does not yield milestones."""
+        try:
+            if shipment_id is None:
+                stmt = select(Shipment.id).where(Shipment.tracking_number == tracking_number)
+                shipment_id = db.execute(stmt).scalar_one_or_none()
+
+            for att in attempts:
+                resp_body = att.get("response_body")
+                if resp_body and len(resp_body) > 65000:
+                    resp_body = resp_body[:65000] + "\n... [TRUNCATED]"
+
+                log_entry = ProviderExecutionLog(
+                    shipment_id=shipment_id,
+                    tracking_number=tracking_number,
+                    provider_name=att.get("provider_name", "unknown"),
+                    status=att.get("status", "UNKNOWN"),
+                    http_status_code=att.get("http_status"),
+                    error_message=att.get("error"),
+                    request_curl=att.get("request_curl"),
+                    response=resp_body,
+                    latency_ms=att.get("latency_ms", 0.0),
+                )
+                db.add(log_entry)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"Error recording execution logs to DB: {exc}")
 
     @classmethod
     def get_last_tracking(

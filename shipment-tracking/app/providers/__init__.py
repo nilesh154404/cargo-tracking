@@ -1,7 +1,6 @@
 from typing import Dict, Optional
 from app.providers.base import BaseProvider
 from app.providers.air.cathay_cargo import CathayCargoProvider
-from app.providers.air.emirates_skycargo import EmiratesSkyCargoProvider
 from app.providers.air.singapore_airlines import SingaporeAirlinesCargoProvider
 from app.providers.air.lufthansa_cargo import LufthansaCargoProvider
 from app.providers.air.jal_cargo import JalCargoProvider
@@ -26,6 +25,9 @@ from app.providers.air.generic_air import GenericAirProvider
 from app.providers.air.silk_way_west_cargo import SilkWayWestCargoProvider
 from app.providers.air.iag_cargo import IagCargoProvider
 from app.providers.air.champ_cargo import ChampCargoProvider
+from app.providers.air.maskargo import MasKargoProvider
+from app.providers.air.virgin_atlantic_cargo import VirginAtlanticCargoProvider
+from app.providers.air.emirates_skycargo import EmiratesSkyCargoProvider
 from app.providers.sea.maersk import MaerskProvider
 from app.providers.sea.msc import MscProvider
 from app.providers.sea.ldb_container import LdbContainerProvider
@@ -35,7 +37,6 @@ _ldb_instance = LdbContainerProvider()
 
 _REGISTRY: Dict[str, BaseProvider] = {
     "cathay_cargo": CathayCargoProvider(),
-    "emirates_skycargo": EmiratesSkyCargoProvider(),
     "singapore_airlines": SingaporeAirlinesCargoProvider(),
     "lufthansa_cargo": LufthansaCargoProvider(),
     "jal_cargo": JalCargoProvider(),
@@ -59,6 +60,9 @@ _REGISTRY: Dict[str, BaseProvider] = {
     "silk_way_west_cargo": SilkWayWestCargoProvider(),
     "iag_cargo": IagCargoProvider(),
     "champ_cargo": ChampCargoProvider(),
+    "maskargo": MasKargoProvider(),
+    "virgin_atlantic_cargo": VirginAtlanticCargoProvider(),
+    "emirates_skycargo": EmiratesSkyCargoProvider(),
     "generic_air": GenericAirProvider(),
     "maersk": MaerskProvider(),
     "msc": MscProvider(),

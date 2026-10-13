@@ -86,6 +86,9 @@ class MscProvider(BaseProvider):
             "trackingMode": "0",
         }
 
+        curl_cmd = self.build_curl_command("POST", MSC_TRACKING_URL, headers=MSC_HEADERS, body=payload)
+        response_text = None
+
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 resp = await client.post(
@@ -95,6 +98,7 @@ class MscProvider(BaseProvider):
                 )
 
             latency = round((time.time() - start_time) * 1000, 2)
+            response_text = resp.text
 
             if resp.status_code != 200:
                 return ProviderResult(
@@ -102,6 +106,8 @@ class MscProvider(BaseProvider):
                     provider_name=self.name,
                     status_code=resp.status_code,
                     error=f"MSC API returned HTTP {resp.status_code}",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                     latency_ms=latency,
                 )
 
@@ -112,6 +118,8 @@ class MscProvider(BaseProvider):
                     provider_name=self.name,
                     status_code=404,
                     error=f"MSC shipment not found or query unsuccessful for {container_id}",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                     latency_ms=latency,
                     raw_data=data,
                 )
@@ -125,6 +133,8 @@ class MscProvider(BaseProvider):
                     provider_name=self.name,
                     status_code=404,
                     error=f"No Bill of Lading records found for container {container_id}",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                     latency_ms=latency,
                     raw_data=data,
                 )
@@ -230,6 +240,8 @@ class MscProvider(BaseProvider):
                     "container_type": target_container.get("ContainerType") if target_container else None,
                     "events_count": len(parsed_events),
                 },
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
 
@@ -240,6 +252,8 @@ class MscProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=f"Network exception connecting to MSC API: {str(exc)}",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except Exception as exc:
@@ -249,5 +263,7 @@ class MscProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=f"Error parsing MSC response: {str(exc)}",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )

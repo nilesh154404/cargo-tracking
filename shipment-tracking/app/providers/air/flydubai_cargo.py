@@ -111,6 +111,7 @@ class FlyDubaiCargoProvider(BaseProvider):
                     },
                 )
                 resp.raise_for_status()
+                response_text = resp.text
                 data = resp.json()
 
                 access_token = data.get("access_token")
@@ -142,6 +143,8 @@ class FlyDubaiCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         awb_full = f"{prefix}{serial}"  # e.g. "14153681191"
 
         try:
@@ -155,6 +158,8 @@ class FlyDubaiCargoProvider(BaseProvider):
                     status_code=401,
                     error="FlyDubai Cargo: Unable to obtain Accelya guest token.",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
             headers = {
@@ -178,6 +183,7 @@ class FlyDubaiCargoProvider(BaseProvider):
                 }
 
                 logger.info(f"FlyDubaiCargo: Searching for AWB {prefix}-{serial}...")
+                curl_cmd = self.build_curl_command("POST", SEARCH_URL, headers=headers, body=search_payload)
                 resp = await client.post(SEARCH_URL, json=search_payload, headers=headers)
 
                 # Handle 401 – retry with fresh token
@@ -191,6 +197,7 @@ class FlyDubaiCargoProvider(BaseProvider):
                         )
 
                 resp.raise_for_status()
+                response_text = resp.text
                 search_data = resp.json()
 
                 # Extract booking reference from search result
@@ -207,6 +214,8 @@ class FlyDubaiCargoProvider(BaseProvider):
                             f"on FlyDubai Cargo. Please verify the tracking number."
                         ),
                         latency_ms=latency,
+                        request_curl=curl_cmd,
+                        response_body=response_text,
                     )
 
                 # ── Step 3: Get full order details with milestones ────
@@ -216,15 +225,19 @@ class FlyDubaiCargoProvider(BaseProvider):
                 detail_url = f"{ORDER_URL_BASE}{booking_ref}"
                 resp2 = await client.get(detail_url, headers=headers)
                 resp2.raise_for_status()
+                response_text = resp2.text
                 order_data = resp2.json()
 
                 latency = round((time.time() - start_time) * 1000, 2)
-                return self._parse_order_response(
+                result = self._parse_order_response(
                     order_data=order_data,
                     prefix=prefix,
                     serial=serial,
                     latency=latency,
                 )
+                result.request_curl = curl_cmd
+                result.response_body = response_text
+                return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -234,6 +247,8 @@ class FlyDubaiCargoProvider(BaseProvider):
                 status_code=408,
                 error="FlyDubai Cargo tracking request timed out.",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.HTTPStatusError as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -244,6 +259,8 @@ class FlyDubaiCargoProvider(BaseProvider):
                 status_code=exc.response.status_code,
                 error=str(exc),
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -254,6 +271,8 @@ class FlyDubaiCargoProvider(BaseProvider):
                 status_code=500,
                 error=str(exc),
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
     # ── Helpers ───────────────────────────────────────────────────────

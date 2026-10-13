@@ -83,6 +83,8 @@ class EthiopianCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
 
         if prefix != "071":
             latency = round((time.time() - start_time) * 1000, 2)
@@ -92,6 +94,8 @@ class EthiopianCargoProvider(BaseProvider):
                 status_code=400,
                 error=f"Prefix '{prefix}' not handled by Ethiopian Cargo (expects 071)",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
         try:
@@ -104,6 +108,7 @@ class EthiopianCargoProvider(BaseProvider):
 
                 # POST with AWB number (just the serial, no prefix)
                 logger.info(f"Ethiopian Cargo: POST tracking for {serial}")
+                curl_cmd = self.build_curl_command("POST", TRACKING_URL, headers=ET_HEADERS)
                 resp = await client.post(
                     TRACKING_URL,
                     data={"AirwayBilNum": serial},
@@ -111,6 +116,7 @@ class EthiopianCargoProvider(BaseProvider):
                 )
 
             latency = round((time.time() - start_time) * 1000, 2)
+            response_text = resp.text
 
             if resp.status_code != 200:
                 return ProviderResult(
@@ -119,9 +125,14 @@ class EthiopianCargoProvider(BaseProvider):
                     status_code=resp.status_code,
                     error=f"Ethiopian Cargo HTTP {resp.status_code}",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
-            return self._parse_html(resp.text, prefix, serial, latency)
+            result = self._parse_html(resp.text, prefix, serial, latency)
+            result.request_curl = curl_cmd
+            result.response_body = response_text
+            return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -131,6 +142,8 @@ class EthiopianCargoProvider(BaseProvider):
                 status_code=408,
                 error="Ethiopian Cargo tracking request timed out.",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.RequestError as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -140,6 +153,8 @@ class EthiopianCargoProvider(BaseProvider):
                 status_code=500,
                 error=f"Network exception connecting to Ethiopian Cargo: {exc}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -150,6 +165,8 @@ class EthiopianCargoProvider(BaseProvider):
                 status_code=500,
                 error=f"Error tracking Ethiopian Cargo shipment: {exc}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
     # ── HTML Parsing ──────────────────────────────────────────────────

@@ -163,6 +163,8 @@ class TrackingOrchestratorAgent:
                         http_status=result.status_code,
                         latency_ms=result.latency_ms,
                         error=None,
+                        request_curl=result.request_curl,
+                        response_body=result.response_body,
                     )
                 )
                 successful_result = result
@@ -180,6 +182,8 @@ class TrackingOrchestratorAgent:
                         http_status=result.status_code,
                         latency_ms=result.latency_ms,
                         error=last_error,
+                        request_curl=result.request_curl,
+                        response_body=result.response_body,
                     )
                 )
 
@@ -215,35 +219,43 @@ class TrackingOrchestratorAgent:
             elif events_list:
                 latest_event_obj = events_list[-1]
 
-        # Step 4: Persist in MySQL Database only when real data is found
-        if db and successful_result and successful_result.events:
+        # Step 4: Persist in MySQL Database
+        if db and attempts:
             try:
-                w_val = None
-                w_unit = "kg"
-                if isinstance(successful_result.weight, dict):
-                    w_val = successful_result.weight.get("value")
-                    w_unit = successful_result.weight.get("unit", "kg")
-                elif isinstance(successful_result.weight, (int, float)):
-                    w_val = float(successful_result.weight)
+                if successful_result and successful_result.events:
+                    w_val = None
+                    w_unit = "kg"
+                    if isinstance(successful_result.weight, dict):
+                        w_val = successful_result.weight.get("value")
+                        w_unit = successful_result.weight.get("unit", "kg")
+                    elif isinstance(successful_result.weight, (int, float)):
+                        w_val = float(successful_result.weight)
 
-                self.db_tool.save_snapshot(
-                    db=db,
-                    tracking_number=route_plan.clean_tracking_number,
-                    transport_mode=route_plan.mode,
-                    carrier_code=route_plan.carrier_code,
-                    carrier_name=route_plan.carrier_name,
-                    status=successful_result.status,
-                    origin=successful_result.origin,
-                    destination=successful_result.destination,
-                    pieces=successful_result.pieces,
-                    weight_val=w_val,
-                    weight_unit=w_unit,
-                    volume=successful_result.volume,
-                    provider_used=final_provider_used or "none",
-                    events=successful_result.events,
-                    raw_data=successful_result.raw_data,
-                    attempts=[a.model_dump() for a in attempts],
-                )
+                    self.db_tool.save_snapshot(
+                        db=db,
+                        tracking_number=route_plan.clean_tracking_number,
+                        transport_mode=route_plan.mode,
+                        carrier_code=route_plan.carrier_code,
+                        carrier_name=route_plan.carrier_name,
+                        status=successful_result.status,
+                        origin=successful_result.origin,
+                        destination=successful_result.destination,
+                        pieces=successful_result.pieces,
+                        weight_val=w_val,
+                        weight_unit=w_unit,
+                        volume=successful_result.volume,
+                        provider_used=final_provider_used or "none",
+                        events=successful_result.events,
+                        raw_data=successful_result.raw_data,
+                        attempts=[a.model_dump() for a in attempts],
+                    )
+                else:
+                    # Persist provider attempts (cURL commands and responses) even when tracking doesn't yield milestones
+                    self.db_tool.record_execution_logs(
+                        db=db,
+                        tracking_number=route_plan.clean_tracking_number,
+                        attempts=[a.model_dump() for a in attempts],
+                    )
             except Exception as e:
                 logger.error(f"Non-fatal error persisting to database: {e}")
 

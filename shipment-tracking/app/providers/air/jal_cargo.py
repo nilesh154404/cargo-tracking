@@ -70,6 +70,8 @@ class JalCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
 
         # Support both standard prefix 131 and alias 1331
         effective_prefix = "131" if prefix in ("131", "1331") else prefix
@@ -81,6 +83,8 @@ class JalCargoProvider(BaseProvider):
                 status_code=400,
                 error=f"Prefix '{prefix}' not handled by JAL Cargo (expects 131)",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
         payload = {
@@ -92,6 +96,7 @@ class JalCargoProvider(BaseProvider):
 
         try:
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                curl_cmd = self.build_curl_command("POST", JAL_TRACK_URL, headers=JAL_HEADERS, body=payload)
                 resp = await client.post(
                     JAL_TRACK_URL,
                     headers=JAL_HEADERS,
@@ -99,6 +104,7 @@ class JalCargoProvider(BaseProvider):
                 )
 
             latency = round((time.time() - start_time) * 1000, 2)
+            response_text = resp.text
 
             if resp.status_code != 200:
                 return ProviderResult(
@@ -107,6 +113,8 @@ class JalCargoProvider(BaseProvider):
                     status_code=resp.status_code,
                     error=f"JAL Cargo Web returned HTTP {resp.status_code}",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -121,6 +129,8 @@ class JalCargoProvider(BaseProvider):
                     status_code=404,
                     error=f"JAL Cargo tracking error: {err_text}",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
             # 1. Parse common header details (origin, destination, pieces, weight)
@@ -167,6 +177,8 @@ class JalCargoProvider(BaseProvider):
                     status_code=404,
                     error=f"No shipment records found for JAL AWB {effective_prefix}-{serial}",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
             events: List[Dict[str, Any]] = []
@@ -265,6 +277,8 @@ class JalCargoProvider(BaseProvider):
                     "milestones_count": len(parsed_events),
                 },
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
         except httpx.RequestError as exc:
@@ -275,6 +289,8 @@ class JalCargoProvider(BaseProvider):
                 status_code=500,
                 error=f"Network exception connecting to JAL Cargo: {str(exc)}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -284,4 +300,6 @@ class JalCargoProvider(BaseProvider):
                 status_code=500,
                 error=f"Error parsing JAL Cargo HTML: {str(exc)}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )

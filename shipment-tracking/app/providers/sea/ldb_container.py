@@ -75,6 +75,8 @@ class LdbContainerProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         container_id = f"{prefix}{serial}".upper().strip()
 
         params = {
@@ -84,6 +86,7 @@ class LdbContainerProvider(BaseProvider):
 
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
+                curl_cmd = self.build_curl_command("GET", LDB_SEARCH_URL, headers=LDB_HEADERS)
                 resp = await client.get(
                     LDB_SEARCH_URL,
                     params=params,
@@ -91,6 +94,7 @@ class LdbContainerProvider(BaseProvider):
                 )
 
             latency = round((time.time() - start_time) * 1000, 2)
+            response_text = resp.text
 
             if resp.status_code != 200:
                 return ProviderResult(
@@ -99,6 +103,8 @@ class LdbContainerProvider(BaseProvider):
                     status_code=resp.status_code,
                     error=f"LDB API returned HTTP {resp.status_code}",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
             data = resp.json()
@@ -246,6 +252,8 @@ class LdbContainerProvider(BaseProvider):
                     "source": "Logistics Data Bank (ldb.co.in)",
                 },
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
         except httpx.RequestError as exc:
@@ -256,6 +264,8 @@ class LdbContainerProvider(BaseProvider):
                 status_code=500,
                 error=f"Network exception connecting to LDB API: {str(exc)}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -265,4 +275,6 @@ class LdbContainerProvider(BaseProvider):
                 status_code=500,
                 error=f"Unexpected error parsing LDB response: {str(exc)}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )

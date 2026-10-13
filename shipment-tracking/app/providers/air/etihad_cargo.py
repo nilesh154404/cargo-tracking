@@ -26,6 +26,8 @@ class EtihadCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         
         url = "https://www.etihadcargo.com/ada-services/eycargo-trackntrace/v1/track-and-trace"
 
@@ -45,14 +47,19 @@ class EtihadCargoProvider(BaseProvider):
 
         try:
             logger.info(f"EtihadCargo: Fetching tracking data for {prefix}-{serial}...")
+            curl_cmd = self.build_curl_command("POST", url, headers=headers, body=payload)
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
                 response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
+                response_text = response.text
                 
             data = response.json()
             latency = round((time.time() - start_time) * 1000, 2)
             
-            return self._parse_json(data, prefix, serial, latency)
+            result = self._parse_json(data, prefix, serial, latency)
+            result.request_curl = curl_cmd
+            result.response_body = response_text
+            return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -62,6 +69,8 @@ class EtihadCargoProvider(BaseProvider):
                 status_code=408,
                 error="Etihad Cargo tracking request timed out.",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.HTTPStatusError as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -76,6 +85,8 @@ class EtihadCargoProvider(BaseProvider):
                     status="NOT_FOUND",
                     error=f"Tracking data not found for AWB {prefix}-{serial}.",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
             
             return ProviderResult(
@@ -84,6 +95,8 @@ class EtihadCargoProvider(BaseProvider):
                 status_code=exc.response.status_code,
                 error=f"HTTP Error: {exc}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -94,6 +107,8 @@ class EtihadCargoProvider(BaseProvider):
                 status_code=500,
                 error=str(exc),
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
     def _parse_json(self, data: dict, prefix: str, serial: str, latency: float) -> ProviderResult:

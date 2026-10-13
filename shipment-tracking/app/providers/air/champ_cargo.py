@@ -56,10 +56,14 @@ class ChampCargoProvider(BaseProvider):
             "captchaResponse": "FREIGHT_LOGGED_CAPTCHA"
         }
 
+        curl_cmd = self.build_curl_command("POST", url, headers=headers, body=payload)
+        response_text = None
+
         try:
             logger.info(f"ChampCargo: Fetching tracking data for {awb}...")
             async with httpx.AsyncClient(verify=False, timeout=20.0) as client:
                 response = await client.post(url, json=payload, headers=headers)
+                response_text = response.text
                 response.raise_for_status()
 
             data = response.json()
@@ -72,10 +76,15 @@ class ChampCargoProvider(BaseProvider):
                     status_code=404,
                     status="NOT_FOUND",
                     error=f"No tracking data found for AWB {awb}.",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                     latency_ms=latency,
                 )
 
-            return self._parse_json(data[0], prefix, serial, latency)
+            result = self._parse_json(data[0], prefix, serial, latency)
+            result.request_curl = curl_cmd
+            result.response_body = response_text
+            return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -84,6 +93,8 @@ class ChampCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="ChampCargo tracking request timed out.",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except httpx.HTTPStatusError as exc:
@@ -94,6 +105,8 @@ class ChampCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=exc.response.status_code,
                 error=f"HTTP Error: {exc}",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except Exception as exc:
@@ -104,6 +117,8 @@ class ChampCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
 

@@ -90,6 +90,8 @@ class QatarCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
 
         if prefix != "157":
             latency = round((time.time() - start_time) * 1000, 2)
@@ -99,6 +101,8 @@ class QatarCargoProvider(BaseProvider):
                 status_code=400,
                 error=f"Prefix '{prefix}' not handled by Qatar Cargo (expects 157)",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
         # Build Salesforce Aura message
@@ -136,9 +140,11 @@ class QatarCargoProvider(BaseProvider):
                 timeout=20.0, verify=True, follow_redirects=True
             ) as client:
                 logger.info(f"Qatar Cargo: POST Aura API for {prefix}-{serial}")
+                curl_cmd = self.build_curl_command("POST", AURA_URL, headers=QR_HEADERS, body=form_data)
                 resp = await client.post(AURA_URL, data=form_data, headers=QR_HEADERS)
 
             latency = round((time.time() - start_time) * 1000, 2)
+            response_text = resp.text
 
             if resp.status_code != 200:
                 return ProviderResult(
@@ -147,9 +153,14 @@ class QatarCargoProvider(BaseProvider):
                     status_code=resp.status_code,
                     error=f"Qatar Cargo Aura API HTTP {resp.status_code}",
                     latency_ms=latency,
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                 )
 
-            return self._parse_response(resp.json(), prefix, serial, latency)
+            result = self._parse_response(resp.json(), prefix, serial, latency)
+            result.request_curl = curl_cmd
+            result.response_body = response_text
+            return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -159,6 +170,8 @@ class QatarCargoProvider(BaseProvider):
                 status_code=408,
                 error="Qatar Cargo tracking request timed out.",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except httpx.RequestError as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -168,6 +181,8 @@ class QatarCargoProvider(BaseProvider):
                 status_code=500,
                 error=f"Network exception connecting to Qatar Cargo: {exc}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -178,6 +193,8 @@ class QatarCargoProvider(BaseProvider):
                 status_code=500,
                 error=f"Error tracking Qatar Cargo shipment: {exc}",
                 latency_ms=latency,
+                request_curl=curl_cmd,
+                response_body=response_text,
             )
 
     # ── Response Parser ───────────────────────────────────────────────

@@ -59,6 +59,8 @@ class IndigoCargoProvider(BaseProvider):
         force_refresh: bool = False,
     ) -> ProviderResult:
         start_time = time.time()
+        curl_cmd = None
+        response_text = None
         try:
             async with httpx.AsyncClient(
                 follow_redirects=True,
@@ -107,6 +109,8 @@ class IndigoCargoProvider(BaseProvider):
                     "hdnIsAlaska": "false",
                 }
 
+                curl_cmd = self.build_curl_command("POST", TRACKING_URL, headers=BASE_HEADERS, body=form_data)
+
                 post_resp = await client.post(
                     TRACKING_URL,
                     data=form_data,
@@ -114,14 +118,18 @@ class IndigoCargoProvider(BaseProvider):
                 )
                 post_resp.raise_for_status()
                 latency = round((time.time() - start_time) * 1000, 2)
+                response_text = post_resp.text
 
                 # Step 3: Parse the HTML response
-                return self._parse_tracking_html(
+                result = self._parse_tracking_html(
                     html=post_resp.text,
                     prefix=prefix,
                     serial=serial,
                     latency=latency,
                 )
+                result.request_curl = curl_cmd
+                result.response_body = response_text
+                return result
 
         except httpx.TimeoutException:
             latency = round((time.time() - start_time) * 1000, 2)
@@ -130,6 +138,8 @@ class IndigoCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=408,
                 error="IndiGo Cargo tracking request timed out.",
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
         except Exception as exc:
@@ -140,6 +150,8 @@ class IndigoCargoProvider(BaseProvider):
                 provider_name=self.name,
                 status_code=500,
                 error=str(exc),
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
 
