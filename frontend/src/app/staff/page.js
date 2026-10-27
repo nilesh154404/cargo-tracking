@@ -10,6 +10,7 @@ import {
   impersonateTenant,
   getCarrierHealthSla,
   getProviderExecutionLogs,
+  getAdminUsageLogs,
   loginUser,
   STORAGE_KEYS
 } from "@/lib/api";
@@ -30,6 +31,11 @@ export default function SuperadminStaffBackofficePage() {
   const [tenants, setTenants] = useState([]);
   const [carriers, setCarriers] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [usageRecords, setUsageRecords] = useState([]);
+  const [usageRecordsLoading, setUsageRecordsLoading] = useState(false);
+  const [adminFilterTenant, setAdminFilterTenant] = useState("");
+  const [adminFilterSearch, setAdminFilterSearch] = useState("");
+  const [adminFilterMode, setAdminFilterMode] = useState("ALL");
 
   // Onboard New Tenant Modal State
   const [onboardModalOpen, setOnboardModalOpen] = useState(false);
@@ -105,19 +111,38 @@ export default function SuperadminStaffBackofficePage() {
 
   const loadAdminData = async () => {
     try {
-      const [statsData, tenantsData, carriersData, logsData] = await Promise.all([
+      const [statsData, tenantsData, carriersData, logsData, usageLogsData] = await Promise.all([
         getAdminPlatformStats().catch(() => null),
         listAdminTenants().catch(() => []),
         getCarrierHealthSla().catch(() => []),
         getProviderExecutionLogs(50).catch(() => []),
+        getAdminUsageLogs({ limit: 100 }).catch(() => []),
       ]);
 
       if (statsData) setStats(statsData);
       setTenants(tenantsData);
       setCarriers(carriersData);
       setLogs(logsData);
+      setUsageRecords(usageLogsData);
     } catch (err) {
       console.error("Admin data load error:", err);
+    }
+  };
+
+  const handleLoadAdminUsageLogs = async (tenantId = adminFilterTenant, mode = adminFilterMode, search = adminFilterSearch) => {
+    setUsageRecordsLoading(true);
+    try {
+      const data = await getAdminUsageLogs({
+        limit: 100,
+        tenant_id: tenantId ? parseInt(tenantId) : null,
+        mode: mode === "ALL" ? "" : mode,
+        search: search.trim()
+      });
+      setUsageRecords(data || []);
+    } catch (err) {
+      console.warn("Failed to load admin usage logs:", err);
+    } finally {
+      setUsageRecordsLoading(false);
     }
   };
 
@@ -273,12 +298,18 @@ export default function SuperadminStaffBackofficePage() {
         <nav style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
           {[
             { id: "tenants", label: "Tenant Directory & Onboarding", icon: "🏢" },
+            { id: "usagelogs", label: "Global Usage & Audit History", icon: "📜" },
             { id: "carriers", label: "Carrier Network Health SLA", icon: "🌐" },
             { id: "telemetry", label: "Global Provider Logs & cURL", icon: "📡" },
           ].map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                setActiveTab(item.id);
+                if (item.id === "usagelogs") {
+                  handleLoadAdminUsageLogs();
+                }
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -326,6 +357,7 @@ export default function SuperadminStaffBackofficePage() {
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
             <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a" }}>
               {activeTab === "tenants" && "Enterprise Tenants & Onboarding"}
+              {activeTab === "usagelogs" && "Global Tenant Usage & Tracking History"}
               {activeTab === "carriers" && "Carrier Health SLA & Dynamic Routing"}
               {activeTab === "telemetry" && "Provider Telemetry & Debugger"}
             </h2>
@@ -465,6 +497,206 @@ export default function SuperadminStaffBackofficePage() {
                         </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: GLOBAL USAGE & AUDIT HISTORY */}
+          {activeTab === "usagelogs" && (
+            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
+                <div>
+                  <h3 style={{ fontSize: "1.1rem", fontWeight: "700" }}>Global Multi-Tenant Usage &amp; Tracking History</h3>
+                  <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                    Real-time audit log of all tracking queries, credits consumed, and carrier routing decisions across tenants.
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleLoadAdminUsageLogs(adminFilterTenant, adminFilterMode, adminFilterSearch)}
+                  className="btn btn-outline btn-sm"
+                  disabled={usageRecordsLoading}
+                >
+                  {usageRecordsLoading ? "Refreshing..." : "🔄 Refresh"}
+                </button>
+              </div>
+
+              {/* Filters Toolbar */}
+              <div style={{ padding: "1rem 1.5rem", background: "#f8fafc", borderBottom: "1px solid var(--border-subtle)", display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flex: "1 1 300px", maxWidth: "420px" }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Search tracking #, carrier, provider..."
+                    value={adminFilterSearch}
+                    onChange={(e) => setAdminFilterSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleLoadAdminUsageLogs(adminFilterTenant, adminFilterMode, e.target.value);
+                      }
+                    }}
+                    style={{ fontSize: "0.85rem", height: "38px" }}
+                  />
+                  <button
+                    onClick={() => handleLoadAdminUsageLogs(adminFilterTenant, adminFilterMode, adminFilterSearch)}
+                    className="btn btn-secondary btn-sm"
+                    style={{ height: "38px" }}
+                  >
+                    Search
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                  {/* Tenant Select */}
+                  <select
+                    className="form-select"
+                    value={adminFilterTenant}
+                    onChange={(e) => {
+                      setAdminFilterTenant(e.target.value);
+                      handleLoadAdminUsageLogs(e.target.value, adminFilterMode, adminFilterSearch);
+                    }}
+                    style={{ fontSize: "0.82rem", height: "38px" }}
+                  >
+                    <option value="">All Organizations</option>
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.slug})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Mode Filter */}
+                  <div style={{ display: "flex", background: "#ffffff", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "2px" }}>
+                    {[
+                      { id: "ALL", label: "All" },
+                      { id: "SEA", label: "🚢 Sea" },
+                      { id: "AIR", label: "✈️ Air" },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => {
+                          setAdminFilterMode(m.id);
+                          handleLoadAdminUsageLogs(adminFilterTenant, m.id, adminFilterSearch);
+                        }}
+                        style={{
+                          padding: "0.35rem 0.65rem",
+                          border: "none",
+                          borderRadius: "var(--radius-sm)",
+                          fontSize: "0.82rem",
+                          fontWeight: adminFilterMode === m.id ? "700" : "500",
+                          background: adminFilterMode === m.id ? "var(--accent-blue)" : "transparent",
+                          color: adminFilterMode === m.id ? "#ffffff" : "var(--text-secondary)",
+                          cursor: "pointer"
+                        }}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="table-wrapper" style={{ border: "none" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Timestamp (UTC)</th>
+                      <th>Organization / Tenant</th>
+                      <th>Tracking Identifier</th>
+                      <th>Mode</th>
+                      <th>Carrier</th>
+                      <th>Provider</th>
+                      <th>Status</th>
+                      <th>Credits</th>
+                      <th>Request IP</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usageRecordsLoading ? (
+                      <tr>
+                        <td colSpan={9} style={{ textAlign: "center", padding: "3rem" }}>
+                          <span className="spinner" style={{ width: "2rem", height: "2rem", color: "var(--accent-blue)" }} />
+                          <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading records...</div>
+                        </td>
+                      </tr>
+                    ) : usageRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ textAlign: "center", padding: "2.5rem", color: "var(--text-muted)" }}>
+                          No usage records found matching the filter criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      usageRecords.map((r) => {
+                        const statusUpper = (r.status || "").toUpperCase();
+                        const isDelivered = statusUpper.includes("DELIVERED") || statusUpper.includes("RETURNED");
+                        const isInTransit = statusUpper.includes("TRANSIT") || statusUpper.includes("DEPARTED") || statusUpper.includes("DISCHARGED") || statusUpper.includes("LOADED");
+                        return (
+                          <tr key={r.id}>
+                            <td style={{ fontSize: "0.82rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                              {r.created_at ? new Date(r.created_at).toLocaleString() : "--"}
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: "600", fontSize: "0.85rem", color: "#0f172a" }}>
+                                {r.tenant_name || `Tenant #${r.tenant_id}`}
+                              </div>
+                              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                                {r.tenant_slug}
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                                <span style={{ fontFamily: "var(--font-mono)", fontWeight: "700" }}>{r.tracking_number}</span>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(r.tracking_number);
+                                    alert(`Copied "${r.tracking_number}" to clipboard`);
+                                  }}
+                                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.8rem", opacity: 0.6 }}
+                                  title="Copy tracking number"
+                                >
+                                  📋
+                                </button>
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`badge badge-${(r.transport_mode || "SEA").toLowerCase()}`}>
+                                {r.transport_mode === "AIR" ? "✈️ AIR" : "🚢 SEA"}
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: "600", fontSize: "0.85rem" }}>
+                                {r.carrier_name || r.carrier_code || "--"}
+                              </div>
+                              {r.carrier_code && r.carrier_code !== r.carrier_name && (
+                                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                                  Code: {r.carrier_code}
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <code style={{ fontSize: "0.78rem", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
+                                {r.provider_used || "live_api"}
+                              </code>
+                            </td>
+                            <td>
+                              <span className={`badge ${isDelivered ? "badge-success" : isInTransit ? "badge-info" : "badge-warning"}`} style={{ fontSize: "0.75rem" }}>
+                                {r.status || "IN TRANSIT"}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: "700", color: "var(--text-main)", fontSize: "0.85rem" }}>
+                                {r.credits_consumed || 1} cr
+                              </span>
+                            </td>
+                            <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                              {r.request_ip || "Direct"}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

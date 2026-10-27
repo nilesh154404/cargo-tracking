@@ -14,6 +14,7 @@ import {
   getSubscriptionPlans,
   upgradeSubscriptionPlan,
   getShipmentHistory,
+  getTenantUsageLogs,
   STORAGE_KEYS
 } from "@/lib/api";
 
@@ -64,6 +65,19 @@ export default function TenantPortalPage() {
   // Recent Shipments
   const [recentShipments, setRecentShipments] = useState([]);
 
+  // Usage Logs & Audit History State
+  const [usageLogs, setUsageLogs] = useState({
+    items: [],
+    pagination: { total: 0, limit: 25, offset: 0 },
+    summary: { total_requests: 0, total_credits_consumed: 0, air_requests: 0, sea_requests: 0, success_rate: 100 }
+  });
+  const [usageLogsLoading, setUsageLogsLoading] = useState(false);
+  const [usageFilterSearch, setUsageFilterSearch] = useState("");
+  const [usageFilterMode, setUsageFilterMode] = useState("ALL");
+  const [usageFilterStatus, setUsageFilterStatus] = useState("ALL");
+  const [usagePageOffset, setUsagePageOffset] = useState(0);
+  const [usagePageLimit, setUsagePageLimit] = useState(25);
+
   useEffect(() => {
     loadPortalData();
   }, []);
@@ -104,6 +118,11 @@ export default function TenantPortalPage() {
 
       const shipmentsData = await getShipmentHistory(10).catch(() => []);
       setRecentShipments(shipmentsData);
+
+      const logsData = await getTenantUsageLogs({ limit: usagePageLimit, offset: usagePageOffset }).catch(() => null);
+      if (logsData && logsData.items) {
+        setUsageLogs(logsData);
+      }
     } catch (err) {
       console.warn("Portal load session expired or unauthenticated:", err);
       if (typeof window !== "undefined") {
@@ -115,6 +134,54 @@ export default function TenantPortalPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLoadUsageLogs = async (offset = usagePageOffset, limit = usagePageLimit, mode = usageFilterMode, status = usageFilterStatus, search = usageFilterSearch) => {
+    setUsageLogsLoading(true);
+    try {
+      const data = await getTenantUsageLogs({
+        offset,
+        limit,
+        mode: mode === "ALL" ? "" : mode,
+        status: status === "ALL" ? "" : status,
+        search: search.trim()
+      });
+      if (data && data.items) {
+        setUsageLogs(data);
+      }
+    } catch (err) {
+      console.warn("Failed to load usage logs:", err);
+    } finally {
+      setUsageLogsLoading(false);
+    }
+  };
+
+  const handleExportUsageCSV = () => {
+    if (!usageLogs.items || usageLogs.items.length === 0) {
+      alert("No usage records available to export.");
+      return;
+    }
+    const headers = ["ID", "Timestamp (UTC)", "Tracking Identifier", "Transport Mode", "Carrier Code", "Carrier Name", "Provider Used", "Status", "Credits Consumed", "Request IP"];
+    const rows = usageLogs.items.map(item => [
+      item.id,
+      `"${item.created_at || ""}"`,
+      `"${item.tracking_number || ""}"`,
+      `"${item.transport_mode || ""}"`,
+      `"${item.carrier_code || ""}"`,
+      `"${(item.carrier_name || "").replace(/"/g, '""')}"`,
+      `"${item.provider_used || ""}"`,
+      `"${item.status || ""}"`,
+      item.credits_consumed || 1,
+      `"${item.request_ip || ""}"`
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `cargotrack_usage_history_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handlePortalLogin = async (e) => {
@@ -349,13 +416,19 @@ export default function TenantPortalPage() {
           {[
             { id: "dashboard", label: "Overview Dashboard", icon: "📊" },
             { id: "tracker", label: "Live Cargo Tracker", icon: "🔍" },
+            { id: "history", label: "Usage Logs & History", icon: "📜" },
             { id: "batch", label: "Batch CSV Tracking", icon: "📦" },
             { id: "apikeys", label: "Developer API Keys", icon: "🔑" },
             { id: "billing", label: "Subscription & Quota", icon: "💳" },
           ].map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                setActiveTab(item.id);
+                if (item.id === "history") {
+                  handleLoadUsageLogs();
+                }
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -405,6 +478,7 @@ export default function TenantPortalPage() {
             <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a" }}>
               {activeTab === "dashboard" && "Workspace Dashboard"}
               {activeTab === "tracker" && "Live Cargo Inspector"}
+              {activeTab === "history" && "Usage Logs & Audit History"}
               {activeTab === "batch" && "High-Volume Batch Ingestion"}
               {activeTab === "apikeys" && "Developer Center & API Keys"}
               {activeTab === "billing" && "Subscription & Quota Management"}
@@ -501,11 +575,27 @@ export default function TenantPortalPage() {
 
               {/* Recent Shipments Feed */}
               <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h3 style={{ fontSize: "1rem", fontWeight: "700" }}>Recent Tracked Cargo</h3>
-                  <button onClick={() => setActiveTab("tracker")} className="btn btn-outline btn-sm">
-                    + Track New Shipment
-                  </button>
+                <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
+                  <div>
+                    <h3 style={{ fontSize: "1rem", fontWeight: "700" }}>Recent Tracked Cargo</h3>
+                    <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>
+                      Live tracked shipments &amp; audit history
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      onClick={() => {
+                        setActiveTab("history");
+                        handleLoadUsageLogs();
+                      }}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      View All History ({usageLogs.summary?.total_requests || 0}) ➔
+                    </button>
+                    <button onClick={() => setActiveTab("tracker")} className="btn btn-outline btn-sm">
+                      + Track New Shipment
+                    </button>
+                  </div>
                 </div>
 
                 <div className="table-wrapper" style={{ border: "none" }}>
@@ -520,34 +610,48 @@ export default function TenantPortalPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {recentShipments.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
-                            No tracked shipments yet. Use the Live Cargo Tracker to track your first container or AWB.
-                          </td>
-                        </tr>
-                      ) : (
-                        recentShipments.map((s, idx) => (
+                      {(() => {
+                        const feedItems = recentShipments.length > 0 ? recentShipments : (usageLogs.items || []).slice(0, 8);
+                        if (feedItems.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={5} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+                                No tracked shipments yet. Use the Live Cargo Tracker to track your first container or AWB.
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return feedItems.map((s, idx) => (
                           <tr key={idx}>
                             <td style={{ fontFamily: "var(--font-mono)", fontWeight: "700" }}>{s.tracking_number}</td>
-                            <td><span className={`badge badge-${(s.transport_mode || "SEA").toLowerCase()}`}>{s.transport_mode || "SEA"}</span></td>
+                            <td><span className={`badge badge-${(s.transport_mode || "SEA").toLowerCase()}`}>{s.transport_mode === "AIR" ? "✈️ AIR" : "🚢 SEA"}</span></td>
                             <td>{s.carrier_name || s.carrier_code || "--"}</td>
                             <td>
-                              <span className={`badge ${(s.status || "").toUpperCase() === "DELIVERED" ? "badge-success" : "badge-warning"}`}>
+                              <span className={`badge ${(s.status || "").toUpperCase().includes("DELIVERED") ? "badge-success" : (s.status || "").toUpperCase().includes("TRANSIT") ? "badge-info" : "badge-warning"}`}>
                                 {s.status || "IN TRANSIT"}
                               </span>
                             </td>
                             <td>
                               <button
-                                onClick={() => { setTrackQuery(s.tracking_number); setActiveTab("tracker"); handleSingleTrack(); }}
+                                onClick={() => {
+                                  setTrackQuery(s.tracking_number);
+                                  if (s.transport_mode === "AIR") setMawbOblNo(s.tracking_number);
+                                  else setContainerNo(s.tracking_number);
+                                  setActiveTab("tracker");
+                                  handleSingleTrack(null, {
+                                    MAWB_OBL_NO: s.transport_mode === "AIR" ? s.tracking_number : "",
+                                    CONTAINER_NO: s.transport_mode === "SEA" ? s.tracking_number : "",
+                                    query: s.tracking_number
+                                  });
+                                }}
                                 className="btn btn-secondary btn-sm"
                               >
                                 View Details ➔
                               </button>
                             </td>
                           </tr>
-                        ))
-                      )}
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -989,6 +1093,389 @@ export default function TenantPortalPage() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB: USAGE LOGS & AUDIT HISTORY */}
+          {activeTab === "history" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+              {/* Top Summary Stat Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.25rem" }}>
+                <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: "600" }}>Total Monitored Queries</span>
+                    <span style={{ fontSize: "1.25rem" }}>📊</span>
+                  </div>
+                  <div style={{ fontSize: "1.85rem", fontWeight: "800", color: "var(--accent-blue)" }}>
+                    {usageLogs.summary?.total_requests || 0}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                    Immutable tenant audit trail
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: "600" }}>Credits Consumed</span>
+                    <span style={{ fontSize: "1.25rem" }}>⚡</span>
+                  </div>
+                  <div style={{ fontSize: "1.85rem", fontWeight: "800", color: "#f59e0b" }}>
+                    {usageLogs.summary?.total_credits_consumed || 0}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                    1 credit per unique query
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: "600" }}>Ocean Containers</span>
+                    <span style={{ fontSize: "1.25rem" }}>🚢</span>
+                  </div>
+                  <div style={{ fontSize: "1.85rem", fontWeight: "800", color: "#0284c7" }}>
+                    {usageLogs.summary?.sea_requests || 0}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                    MSC, Maersk, ONE Line
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: "600" }}>Air Cargo AWB</span>
+                    <span style={{ fontSize: "1.25rem" }}>✈️</span>
+                  </div>
+                  <div style={{ fontSize: "1.85rem", fontWeight: "800", color: "#8b5cf6" }}>
+                    {usageLogs.summary?.air_requests || 0}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                    Cathay, Emirates, Lufthansa
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: "600" }}>Tracking Success Rate</span>
+                    <span style={{ fontSize: "1.25rem" }}>🎯</span>
+                  </div>
+                  <div style={{ fontSize: "1.85rem", fontWeight: "800", color: "var(--accent-emerald)" }}>
+                    {usageLogs.summary?.success_rate || 100}%
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                    Dynamic carrier fallback active
+                  </div>
+                </div>
+              </div>
+
+              {/* Main Usage Logs Card */}
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                {/* Header & Controls */}
+                <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--border-subtle)", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                  <div>
+                    <h3 style={{ fontSize: "1.1rem", fontWeight: "700" }}>Tracking Audit History &amp; Usage Logs</h3>
+                    <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                      Chronological ledger of all container and air waybill lookups executed under organization {tenant?.name || "Workspace"}.
+                    </p>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                    <button
+                      onClick={() => handleLoadUsageLogs(usagePageOffset, usagePageLimit, usageFilterMode, usageFilterStatus, usageFilterSearch)}
+                      className="btn btn-outline btn-sm"
+                      disabled={usageLogsLoading}
+                      title="Refresh Logs"
+                    >
+                      {usageLogsLoading ? "Refreshing..." : "🔄 Refresh"}
+                    </button>
+                    <button
+                      onClick={handleExportUsageCSV}
+                      className="btn btn-primary btn-sm"
+                      title="Export current filtered view to CSV file"
+                    >
+                      📥 Export CSV
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filters Row */}
+                <div style={{ padding: "1rem 1.5rem", background: "#f8fafc", borderBottom: "1px solid var(--border-subtle)", display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flex: "1 1 300px", maxWidth: "420px" }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Search tracking #, carrier, provider..."
+                      value={usageFilterSearch}
+                      onChange={(e) => {
+                        setUsageFilterSearch(e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          setUsagePageOffset(0);
+                          handleLoadUsageLogs(0, usagePageLimit, usageFilterMode, usageFilterStatus, e.target.value);
+                        }
+                      }}
+                      style={{ fontSize: "0.85rem", height: "38px" }}
+                    />
+                    <button
+                      onClick={() => {
+                        setUsagePageOffset(0);
+                        handleLoadUsageLogs(0, usagePageLimit, usageFilterMode, usageFilterStatus, usageFilterSearch);
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ height: "38px" }}
+                    >
+                      Search
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    {/* Mode Filter Pills */}
+                    <div style={{ display: "flex", background: "#ffffff", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "2px" }}>
+                      {[
+                        { id: "ALL", label: "All Modes" },
+                        { id: "SEA", label: "🚢 Ocean" },
+                        { id: "AIR", label: "✈️ Air" },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => {
+                            setUsageFilterMode(m.id);
+                            setUsagePageOffset(0);
+                            handleLoadUsageLogs(0, usagePageLimit, m.id, usageFilterStatus, usageFilterSearch);
+                          }}
+                          style={{
+                            padding: "0.35rem 0.75rem",
+                            border: "none",
+                            borderRadius: "var(--radius-sm)",
+                            fontSize: "0.82rem",
+                            fontWeight: usageFilterMode === m.id ? "700" : "500",
+                            background: usageFilterMode === m.id ? "var(--accent-blue)" : "transparent",
+                            color: usageFilterMode === m.id ? "#ffffff" : "var(--text-secondary)",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease"
+                          }}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Status Filter */}
+                    <select
+                      className="form-select"
+                      value={usageFilterStatus}
+                      onChange={(e) => {
+                        setUsageFilterStatus(e.target.value);
+                        setUsagePageOffset(0);
+                        handleLoadUsageLogs(0, usagePageLimit, usageFilterMode, e.target.value, usageFilterSearch);
+                      }}
+                      style={{ fontSize: "0.82rem", height: "38px", padding: "0 0.75rem" }}
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="Delivered">Delivered</option>
+                      <option value="In Transit">In Transit</option>
+                      <option value="Returned">Returned / Empty</option>
+                      <option value="Departed">Departed</option>
+                      <option value="Discharged">Discharged</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Table View */}
+                <div className="table-wrapper" style={{ border: "none" }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date &amp; Time (UTC)</th>
+                        <th>Tracking Identifier</th>
+                        <th>Mode</th>
+                        <th>Carrier</th>
+                        <th>Provider Used</th>
+                        <th>Credits</th>
+                        <th>Latest Status</th>
+                        <th>Request IP</th>
+                        <th style={{ textAlign: "right" }}>Inspect</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usageLogsLoading ? (
+                        <tr>
+                          <td colSpan={9} style={{ textAlign: "center", padding: "3rem" }}>
+                            <span className="spinner" style={{ width: "2rem", height: "2rem", color: "var(--accent-blue)" }} />
+                            <div style={{ marginTop: "0.75rem", fontSize: "0.88rem", color: "var(--text-muted)" }}>Loading usage audit records...</div>
+                          </td>
+                        </tr>
+                      ) : !usageLogs.items || usageLogs.items.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} style={{ textAlign: "center", padding: "3rem" }}>
+                            <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📜</div>
+                            <div style={{ fontWeight: "700", color: "var(--text-main)", marginBottom: "0.25rem" }}>No Usage Records Found</div>
+                            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", maxWidth: "450px", margin: "0 auto 1rem auto" }}>
+                              No tracking queries have matched the selected filters. Use the Live Cargo Tracker or execute an API call to record live tracking audit trails.
+                            </p>
+                            <button onClick={() => setActiveTab("tracker")} className="btn btn-primary btn-sm">
+                              Track a Cargo Now
+                            </button>
+                          </td>
+                        </tr>
+                      ) : (
+                        usageLogs.items.map((log) => {
+                          const statusUpper = (log.status || "").toUpperCase();
+                          const isDelivered = statusUpper.includes("DELIVERED") || statusUpper.includes("RETURNED");
+                          const isInTransit = statusUpper.includes("TRANSIT") || statusUpper.includes("DEPARTED") || statusUpper.includes("DISCHARGED") || statusUpper.includes("LOADED");
+                          return (
+                            <tr key={log.id} style={{ transition: "background 0.15s ease" }}>
+                              <td style={{ fontSize: "0.82rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                                {log.created_at ? new Date(log.created_at).toLocaleString() : "--"}
+                              </td>
+                              <td>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: "700", color: "#0f172a", fontSize: "0.9rem" }}>
+                                    {log.tracking_number}
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(log.tracking_number);
+                                      alert(`Copied "${log.tracking_number}" to clipboard`);
+                                    }}
+                                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", opacity: 0.6 }}
+                                    title="Copy tracking number"
+                                  >
+                                    📋
+                                  </button>
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`badge badge-${(log.transport_mode || "SEA").toLowerCase()}`}>
+                                  {log.transport_mode === "AIR" ? "✈️ AIR" : "🚢 SEA"}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: "600", fontSize: "0.88rem", color: "#1e293b" }}>
+                                  {log.carrier_name || log.carrier_code || "--"}
+                                </div>
+                                {log.carrier_code && log.carrier_code !== log.carrier_name && (
+                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                                    Code: {log.carrier_code}
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                <code style={{ fontSize: "0.78rem", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", color: "#334155" }}>
+                                  {log.provider_used || "live_carrier_api"}
+                                </code>
+                              </td>
+                              <td>
+                                <span style={{ fontWeight: "700", color: "var(--text-main)", fontSize: "0.85rem" }}>
+                                  {log.credits_consumed || 1} cr
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`badge ${isDelivered ? "badge-success" : isInTransit ? "badge-info" : "badge-warning"}`} style={{ fontSize: "0.75rem" }}>
+                                  {log.status || "IN TRANSIT"}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                                {log.request_ip || "Direct"}
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                <button
+                                  onClick={() => {
+                                    setTrackQuery(log.tracking_number);
+                                    if (log.transport_mode === "AIR") {
+                                      setMawbOblNo(log.tracking_number);
+                                    } else {
+                                      setContainerNo(log.tracking_number);
+                                    }
+                                    if (log.carrier_code) setCarrierCode(log.carrier_code);
+                                    setActiveTab("tracker");
+                                    handleSingleTrack(null, {
+                                      MAWB_OBL_NO: log.transport_mode === "AIR" ? log.tracking_number : "",
+                                      CONTAINER_NO: log.transport_mode === "SEA" ? log.tracking_number : "",
+                                      query: log.tracking_number
+                                    });
+                                  }}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ fontSize: "0.8rem", padding: "0.3rem 0.65rem" }}
+                                >
+                                  Track Again ➔
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Footer */}
+                <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", flexWrap: "wrap", gap: "1rem" }}>
+                  <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                    Showing{" "}
+                    <strong>
+                      {usageLogs.items.length === 0 ? 0 : usagePageOffset + 1}
+                    </strong>{" "}
+                    to{" "}
+                    <strong>
+                      {Math.min(usagePageOffset + usagePageLimit, usageLogs.pagination?.total || 0)}
+                    </strong>{" "}
+                    of{" "}
+                    <strong>
+                      {usageLogs.pagination?.total || 0}
+                    </strong>{" "}
+                    recorded tracking queries
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                      <span>Per page:</span>
+                      <select
+                        className="form-select"
+                        value={usagePageLimit}
+                        onChange={(e) => {
+                          const newLim = parseInt(e.target.value);
+                          setUsagePageLimit(newLim);
+                          setUsagePageOffset(0);
+                          handleLoadUsageLogs(0, newLim, usageFilterMode, usageFilterStatus, usageFilterSearch);
+                        }}
+                        style={{ height: "32px", fontSize: "0.82rem", padding: "0 0.5rem" }}
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const newOff = Math.max(0, usagePageOffset - usagePageLimit);
+                        setUsagePageOffset(newOff);
+                        handleLoadUsageLogs(newOff, usagePageLimit, usageFilterMode, usageFilterStatus, usageFilterSearch);
+                      }}
+                      disabled={usagePageOffset === 0 || usageLogsLoading}
+                      className="btn btn-outline btn-sm"
+                      style={{ height: "32px" }}
+                    >
+                      ← Previous
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const newOff = usagePageOffset + usagePageLimit;
+                        setUsagePageOffset(newOff);
+                        handleLoadUsageLogs(newOff, usagePageLimit, usageFilterMode, usageFilterStatus, usageFilterSearch);
+                      }}
+                      disabled={usagePageOffset + usagePageLimit >= (usageLogs.pagination?.total || 0) || usageLogsLoading}
+                      className="btn btn-outline btn-sm"
+                      style={{ height: "32px" }}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

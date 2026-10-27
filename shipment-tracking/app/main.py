@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -845,6 +845,96 @@ def list_tenant_shipments(
     ]
 
 
+@app.get("/api/v1/subscription/usage-records")
+@app.get("/api/v1/usage/logs")
+def list_usage_records(
+    mode: Optional[str] = Query(None, description="Filter by transport mode: AIR or SEA"),
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter by tracking status"),
+    carrier_code: Optional[str] = Query(None, description="Filter by carrier code"),
+    search: Optional[str] = Query(None, description="Search tracking number or carrier code"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    auth: AuthContext = Depends(require_scope("tracking:read")),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve real-time immutable usage and tracking audit logs for the authenticated tenant.
+    Provides detailed request timestamps, credits consumed, carrier queries, and providers executed.
+    """
+    if auth.tenant.slug == settings.DEFAULT_TENANT_SLUG:
+        base_stmt = select(UsageRecord).where(
+            (UsageRecord.tenant_id == auth.tenant.id) | (UsageRecord.tenant_id.is_(None))
+        )
+    else:
+        base_stmt = select(UsageRecord).where(UsageRecord.tenant_id == auth.tenant.id)
+
+    stmt = base_stmt
+    if mode:
+        stmt = stmt.where(UsageRecord.transport_mode == mode.upper())
+    if status_filter:
+        stmt = stmt.where(UsageRecord.status.ilike(f"%{status_filter}%"))
+    if carrier_code:
+        stmt = stmt.where(UsageRecord.carrier_code == carrier_code.upper())
+    if search:
+        search_term = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(
+                UsageRecord.tracking_number.ilike(search_term),
+                UsageRecord.carrier_code.ilike(search_term),
+                UsageRecord.provider_used.ilike(search_term),
+            )
+        )
+
+    # Carrier code to name lookup
+    carrier_rows = db.execute(select(Carrier.code, Carrier.name)).all()
+    carrier_names = {row[0].upper(): row[1] for row in carrier_rows if row[0]}
+
+    # Execute query ordered by created_at DESC
+    records = db.execute(
+        stmt.order_by(UsageRecord.created_at.desc()).offset(offset).limit(limit)
+    ).scalars().all()
+
+    # Calculate summary metrics for the tenant
+    all_tenant_records = db.execute(base_stmt).scalars().all()
+    total_records = len(all_tenant_records)
+    total_credits = sum(r.credits_consumed for r in all_tenant_records)
+    air_count = sum(1 for r in all_tenant_records if (r.transport_mode or "").upper() == "AIR")
+    sea_count = sum(1 for r in all_tenant_records if (r.transport_mode or "").upper() == "SEA")
+    successful_count = sum(1 for r in all_tenant_records if r.status and r.status.upper() not in ("NOT_FOUND", "FAILED", "ERROR"))
+    success_rate = round((successful_count / total_records * 100), 1) if total_records > 0 else 100.0
+
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "tracking_number": r.tracking_number,
+                "transport_mode": r.transport_mode,
+                "carrier_code": r.carrier_code,
+                "carrier_name": carrier_names.get((r.carrier_code or "").upper(), r.carrier_code or "Unknown Carrier"),
+                "credits_consumed": r.credits_consumed,
+                "provider_used": r.provider_used,
+                "status": r.status or "IN TRANSIT",
+                "request_ip": r.request_ip or "API Direct",
+                "api_key_id": r.api_key_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in records
+        ],
+        "pagination": {
+            "total": total_records,
+            "limit": limit,
+            "offset": offset,
+        },
+        "summary": {
+            "total_requests": total_records,
+            "total_credits_consumed": total_credits,
+            "air_requests": air_count,
+            "sea_requests": sea_count,
+            "success_rate": success_rate,
+        }
+    }
+
+
 @app.get("/api/v1/history/{tracking_number}")
 async def get_shipment_history(
     tracking_number: str,
@@ -1337,6 +1427,62 @@ def list_provider_execution_logs(
             "created_at": l.created_at.isoformat() if l.created_at else None,
         }
         for l in logs
+    ]
+
+
+@app.get("/api/v1/admin/usage-records")
+def list_admin_usage_records(
+    tenant_id: Optional[int] = Query(None, description="Optional filter by tenant ID"),
+    mode: Optional[str] = Query(None, description="Filter by transport mode: AIR or SEA"),
+    search: Optional[str] = Query(None, description="Search tracking number or carrier code"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    auth: AuthContext = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Global multi-tenant tracking usage records and consumption audit logs."""
+    stmt = select(UsageRecord)
+    if tenant_id:
+        stmt = stmt.where(UsageRecord.tenant_id == tenant_id)
+    if mode:
+        stmt = stmt.where(UsageRecord.transport_mode == mode.upper())
+    if search:
+        search_term = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(
+                UsageRecord.tracking_number.ilike(search_term),
+                UsageRecord.carrier_code.ilike(search_term),
+                UsageRecord.provider_used.ilike(search_term),
+            )
+        )
+
+    carrier_rows = db.execute(select(Carrier.code, Carrier.name)).all()
+    carrier_names = {row[0].upper(): row[1] for row in carrier_rows if row[0]}
+
+    tenants_rows = db.execute(select(Tenant.id, Tenant.name, Tenant.slug)).all()
+    tenant_map = {row[0]: {"name": row[1], "slug": row[2]} for row in tenants_rows}
+
+    records = db.execute(
+        stmt.order_by(UsageRecord.created_at.desc()).offset(offset).limit(limit)
+    ).scalars().all()
+
+    return [
+        {
+            "id": r.id,
+            "tenant_id": r.tenant_id,
+            "tenant_name": tenant_map.get(r.tenant_id, {}).get("name", f"Tenant #{r.tenant_id}"),
+            "tenant_slug": tenant_map.get(r.tenant_id, {}).get("slug", "unknown"),
+            "tracking_number": r.tracking_number,
+            "transport_mode": r.transport_mode,
+            "carrier_code": r.carrier_code,
+            "carrier_name": carrier_names.get((r.carrier_code or "").upper(), r.carrier_code or "Unknown Carrier"),
+            "credits_consumed": r.credits_consumed,
+            "provider_used": r.provider_used,
+            "status": r.status or "IN TRANSIT",
+            "request_ip": r.request_ip or "Direct API",
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in records
     ]
 
 

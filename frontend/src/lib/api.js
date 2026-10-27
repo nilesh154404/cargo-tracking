@@ -147,6 +147,18 @@ export async function getTenantUsage() {
   return apiRequest("/subscription/usage");
 }
 
+export async function getTenantUsageLogs(params = {}) {
+  const query = new URLSearchParams();
+  if (params.limit) query.set("limit", params.limit);
+  if (params.offset) query.set("offset", params.offset);
+  if (params.mode) query.set("mode", params.mode);
+  if (params.status) query.set("status", params.status);
+  if (params.carrier_code) query.set("carrier_code", params.carrier_code);
+  if (params.search) query.set("search", params.search);
+  const qStr = query.toString();
+  return apiRequest(`/subscription/usage-records${qStr ? `?${qStr}` : ""}`);
+}
+
 export async function getSubscriptionPlans() {
   return apiRequest("/subscription/plans");
 }
@@ -214,4 +226,15 @@ export async function getCarrierHealthSla() {
 
 export async function getProviderExecutionLogs(limit = 50) {
   return apiRequest(`/admin/logs?limit=${limit}`, { useStaffAuth: true });
+}
+
+export async function getAdminUsageLogs(params = {}) {
+  const query = new URLSearchParams();
+  if (params.limit) query.set("limit", params.limit);
+  if (params.offset) query.set("offset", params.offset);
+  if (params.tenant_id) query.set("tenant_id", params.tenant_id);
+  if (params.mode) query.set("mode", params.mode);
+  if (params.search) query.set("search", params.search);
+  const qStr = query.toString();
+  return apiRequest(`/admin/usage-records${qStr ? `?${qStr}` : ""}`, { useStaffAuth: true });
 }

@@ -356,3 +356,73 @@ def test_superadmin_onboard_tenant_and_ops():
     )
     assert non_sa_resp.status_code == 403
 
+
+def test_usage_records_and_audit_history_endpoints():
+    uid = uuid.uuid4().hex[:8]
+    # 1. Register a tenant and execute tracking
+    reg_resp = client.post(
+        "/api/v1/auth/register",
+        json={
+            "name": f"Usage Audit Corp {uid}",
+            "slug": f"audit-{uid}",
+            "email": f"audit-{uid}@corp.test",
+            "password": "Password@2026!Secure",
+            "tier_code": "growth",
+        },
+    )
+    assert reg_resp.status_code == 201
+    api_key = reg_resp.json()["api_key"]["key"]
+    login_resp = client.post(
+        "/api/v1/auth/login",
+        json={"email": f"audit-{uid}@corp.test", "password": "Password@2026!Secure"}
+    )
+    assert login_resp.status_code == 200
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Execute a tracking request
+    track_resp = client.post(
+        "/api/v1/track",
+        headers={"X-API-Key": api_key},
+        json={"CONTAINER_NO": "MSMU6484830"}
+    )
+    assert track_resp.status_code == 200
+
+    # 2. Fetch tenant usage records via Bearer token
+    usage_resp = client.get("/api/v1/subscription/usage-records?limit=10", headers=headers)
+    assert usage_resp.status_code == 200
+    data = usage_resp.json()
+    assert "items" in data
+    assert "pagination" in data
+    assert "summary" in data
+    assert len(data["items"]) >= 1
+    assert data["items"][0]["tracking_number"] == "MSMU6484830"
+    assert data["items"][0]["transport_mode"] == "SEA"
+    assert data["summary"]["total_requests"] >= 1
+
+    # 3. Fetch via alias endpoint /api/v1/usage/logs
+    alias_resp = client.get("/api/v1/usage/logs?mode=SEA", headers=headers)
+    assert alias_resp.status_code == 200
+    assert len(alias_resp.json()["items"]) >= 1
+
+    # 4. Superadmin fetches global usage records
+    sa_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "superadmin@cargotrack.io", "password": "SuperAdmin@2026!Cargo"}
+    )
+    assert sa_login.status_code == 200
+    sa_token = sa_login.json()["access_token"]
+    sa_headers = {"Authorization": f"Bearer {sa_token}"}
+
+    admin_usage_resp = client.get("/api/v1/admin/usage-records?limit=10", headers=sa_headers)
+    assert admin_usage_resp.status_code == 200
+    admin_items = admin_usage_resp.json()
+    assert isinstance(admin_items, list)
+    assert len(admin_items) > 0
+    assert "tenant_name" in admin_items[0]
+
+    # 5. Non-superadmin is blocked from admin usage records
+    forbidden_resp = client.get("/api/v1/admin/usage-records", headers=headers)
+    assert forbidden_resp.status_code == 403
+
+
