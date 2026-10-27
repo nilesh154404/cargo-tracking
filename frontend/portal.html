@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Portal | Cargo Intelligence Platform</title>
+  <link rel="stylesheet" href="css/theme.css?v=20261027_02">
+  <link rel="stylesheet" href="css/portal.css?v=20261027_02">
+  <link rel="stylesheet" href="css/website.css?v=20261027_02">
+</head>
+<body>
+
+  <div class="app-wrapper">
+    <!-- Left Navigation Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <a href="index.html" class="sidebar-brand">
+          <div class="brand-icon" style="width:32px; height:32px; font-size:1rem;">⚡</div>
+          <span>CargoTrk<span style="color:var(--accent-cyan);">.io</span></span>
+        </a>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item-btn active" data-view="dashboard">
+          <span>📊</span> Overview Dashboard
+        </button>
+        <button class="nav-item-btn" data-view="tracker">
+          <span>🔍</span> Live Cargo Tracker
+        </button>
+        <button class="nav-item-btn" data-view="batch">
+          <span>📑</span> Batch Ingestion &amp; CSV
+        </button>
+        <button class="nav-item-btn" data-view="apikeys">
+          <span>🔑</span> API Keys &amp; Developer
+        </button>
+        <button class="nav-item-btn" data-view="billing">
+          <span>💳</span> Subscription &amp; Billing
+        </button>
+        <button class="nav-item-btn" data-view="webhooks">
+          <span>⚡</span> Webhooks &amp; Events
+        </button>
+        <button class="nav-item-btn" data-view="team">
+          <span>👥</span> Team &amp; Access
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem;">
+          Tenant Operations Portal
+        </div>
+        <button class="btn btn-secondary btn-sm" id="portalLogoutBtn" style="width:100%;">
+          Sign Out
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <!-- Top Application Header -->
+      <header class="app-header">
+        <div class="tenant-selector">
+          <span style="color:var(--text-muted); font-size:0.85rem;">Organization:</span>
+          <span class="tenant-name-badge" id="tenantNameDisplay">Apex Global Logistics</span>
+          <span class="badge badge-tier" id="tenantTierBadge">GROWTH PLAN</span>
+        </div>
+
+        <div class="quota-meter-wrapper">
+          <div class="quota-bar-card">
+            <div class="quota-bar-meta">
+              <span style="color:var(--text-muted);">Monthly Quota</span>
+              <span id="quotaTextDisplay" style="color:var(--accent-cyan); font-family:var(--font-mono);">-- / --</span>
+            </div>
+            <div class="quota-progress-track">
+              <div class="quota-progress-fill" id="quotaProgressBar" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <button class="btn btn-outline btn-sm" id="openUpgradeModalBtn">
+            Upgrade Plan
+          </button>
+        </div>
+      </header>
+
+      <!-- VIEW 1: Overview Dashboard -->
+      <section class="portal-view active" id="view-dashboard">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Logistics Operations Cockpit</h1>
+            <p>Real-time telemetry and monitored active shipments across your enterprise tenant account.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="document.querySelector('[data-view=\'tracker\']').click()">
+            + Track Shipment
+          </button>
+        </div>
+
+        <!-- Metric Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Active Monitored Shipments</div>
+            <div class="stat-value" id="metricActiveShipments">0</div>
+            <div class="stat-sub">Air &amp; Ocean In Transit</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Delivered This Month</div>
+            <div class="stat-value" id="metricDeliveredCount" style="color:var(--accent-emerald);">0</div>
+            <div class="stat-sub">Successfully Completed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Credits Remaining</div>
+            <div class="stat-value" id="metricCreditsRemaining" style="color:var(--accent-cyan);">0</div>
+            <div class="stat-sub">Monthly Allowance</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Monthly Quota</div>
+            <div class="stat-value" id="metricMonthlyQuota">0</div>
+            <div class="stat-sub">Based on Active Tier</div>
+          </div>
+        </div>
+
+        <!-- Recent Shipments Table -->
+        <div class="table-card">
+          <div class="table-toolbar">
+            <div style="font-weight:700; font-size:1.05rem; color:var(--text-main);">Recent Monitored Shipments</div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tracking Number</th>
+                  <th>Mode</th>
+                  <th>Carrier</th>
+                  <th>Customer Reference</th>
+                  <th>Status</th>
+                  <th>Current Location</th>
+                  <th>Last Updated</th>
+                </tr>
+              </thead>
+              <tbody id="dashboardShipmentTbody">
+                <tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--text-muted);">Loading shipments...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: Live Cargo Tracker Inspector -->
+      <section class="portal-view" id="view-tracker">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Single Cargo Inspector</h1>
+            <p>Direct real-time query against carrier APIs with chronologically descending milestone timeline.</p>
+          </div>
+        </div>
+
+        <div class="glass-panel" style="padding:2rem; max-width:860px; margin-bottom:2rem;">
+          <div class="tracker-input-group">
+            <div class="tracker-input-wrapper">
+              <span class="tracker-icon">🔍</span>
+              <input type="text" id="portalTrackInput" class="tracker-input" placeholder="Enter AWB or Container Number...">
+            </div>
+            <button id="portalTrackBtn" class="btn btn-primary btn-lg">Track Shipment</button>
+          </div>
+        </div>
+
+        <div id="portalTrackResult" class="glass-panel" style="display:none; padding:2rem; max-width:860px;">
+          <div class="shipment-overview-header">
+            <div class="shipment-id-group">
+              <span id="portalResNum" class="tracking-id-text">--</span>
+              <span id="portalResCarrier" class="carrier-name-badge">--</span>
+            </div>
+            <div>
+              <span id="portalResStatus" class="badge badge-warning">IN TRANSIT</span>
+            </div>
+          </div>
+
+          <h3 style="font-size:1.05rem; margin:1.5rem 0 1rem; color:var(--text-main);">Descending Milestones Timeline</h3>
+          <div id="portalResTimeline" class="timeline-list"></div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: Batch Ingestion & CSV Exporter -->
+      <section class="portal-view" id="view-batch">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>High-Volume Batch Ingestion</h1>
+            <p>Upload multi-container or manifest lists to track simultaneously and export normalized reports.</p>
+          </div>
+        </div>
+
+        <div class="glass-panel" style="padding:2rem; margin-bottom:2rem;">
+          <div class="dropzone-box" id="batchDropzone">
+            <div class="dropzone-icon">📥</div>
+            <h3 style="font-size:1.15rem; font-weight:700; color:var(--text-main); margin-bottom:0.5rem;">
+              Drop CSV or TXT file here, or click to browse
+            </h3>
+            <p style="font-size:0.85rem; color:var(--text-muted); max-width:480px; margin:0 auto 1.25rem;">
+              Format: <code>TrackingNumber, CarrierCode, CustomerReference</code> (one per line)
+            </p>
+            <input type="file" id="batchFileInput" accept=".csv,.txt" style="display:none;">
+          </div>
+
+          <div style="margin-top:1.5rem;">
+            <label class="form-label">Or Paste Tracking Identifiers Below:</label>
+            <textarea id="batchManualText" class="form-textarea" rows="4" placeholder="MSMU6484830, MSC, PO-101&#10;MEDU9650838, MSC, PO-102&#10;160-15246221, Cathay, AIR-882"></textarea>
+          </div>
+
+          <div style="margin-top:1.25rem; display:flex; justify-content:flex-end; gap:0.75rem;">
+            <button id="processBatchBtn" class="btn btn-primary">Execute Batch Track</button>
+            <button id="exportBatchCsvBtn" class="btn btn-outline" style="display:none;">Export Enriched CSV ➔</button>
+          </div>
+        </div>
+
+        <div id="batchResultsContainer" class="table-card" style="display:none;">
+          <div class="table-toolbar">
+            <div style="font-weight:700; color:var(--text-main);">Batch Processing Results</div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Identifier</th>
+                <th>Mode</th>
+                <th>Carrier</th>
+                <th>Normalized Status</th>
+                <th>API Result</th>
+                <th>Diagnostics</th>
+              </tr>
+            </thead>
+            <tbody id="batchResultsTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- VIEW 4: Developer Center & API Keys -->
+      <section class="portal-view" id="view-apikeys">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>API Keys &amp; Developer Hub</h1>
+            <p>Manage secret tokens to authenticate programmatically with the Cargo Intelligence API.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" id="openCreateKeyModalBtn">
+            + Create New API Key
+          </button>
+        </div>
+
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Key Name</th>
+                <th>Prefix</th>
+                <th>Status</th>
+                <th>Created Date</th>
+                <th>Last Used</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="apiKeysTbody">
+              <tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">Loading API keys...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- VIEW 5: Subscription & Billing Hub -->
+      <section class="portal-view" id="view-billing">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Subscription &amp; Billing Management</h1>
+            <p>Review plan quotas, rate limits, and upgrade capacity with zero downtime.</p>
+          </div>
+        </div>
+
+        <div class="pricing-grid">
+          <div class="pricing-card">
+            <div class="plan-name">Developer</div>
+            <div class="plan-price-wrap"><span class="plan-price">$0</span><span class="plan-period">/ mo</span></div>
+            <ul class="plan-features">
+              <li class="feature-item">✓ 100 tracks / mo</li>
+              <li class="feature-item">✓ 10 RPM</li>
+              <li class="feature-item">✓ 2 API Keys</li>
+            </ul>
+            <button class="btn btn-secondary select-tier-btn" data-tier="developer">Switch to Developer</button>
+          </div>
+
+          <div class="pricing-card featured">
+            <div class="plan-name">Growth</div>
+            <div class="plan-price-wrap"><span class="plan-price">$199</span><span class="plan-period">/ mo</span></div>
+            <ul class="plan-features">
+              <li class="feature-item">✓ 2,500 tracks / mo</li>
+              <li class="feature-item">✓ 60 RPM</li>
+              <li class="feature-item">✓ 10 API Keys</li>
+              <li class="feature-item">✓ Batch Tracking CSV</li>
+            </ul>
+            <button class="btn btn-primary select-tier-btn" data-tier="growth">Select Growth</button>
+          </div>
+
+          <div class="pricing-card">
+            <div class="plan-name">Business</div>
+            <div class="plan-price-wrap"><span class="plan-price">$699</span><span class="plan-period">/ mo</span></div>
+            <ul class="plan-features">
+              <li class="feature-item">✓ 15,000 tracks / mo</li>
+              <li class="feature-item">✓ 300 RPM</li>
+              <li class="feature-item">✓ 25 API Keys</li>
+              <li class="feature-item">✓ Priority Fallback</li>
+            </ul>
+            <button class="btn btn-secondary select-tier-btn" data-tier="business">Select Business</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 6: Webhooks & Event Automation -->
+      <section class="portal-view" id="view-webhooks">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Webhooks &amp; Automated Delivery</h1>
+            <p>Stream live milestone state changes directly to your TMS, ERP, or notification services.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Webhook endpoint configuration is active on Enterprise/Growth plan.')">
+            + Add Endpoint URL
+          </button>
+        </div>
+
+        <div class="glass-panel" style="padding:2rem;">
+          <h3 style="font-size:1.1rem; color:var(--text-main); margin-bottom:0.75rem;">Configured Endpoints</h3>
+          <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:1.5rem;">
+            CargoTrk dispatches an HTTP POST with HMAC-SHA256 signature when carrier milestone checkpoints update.
+          </p>
+
+          <div class="table-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Target URL</th>
+                  <th>Events</th>
+                  <th>Status</th>
+                  <th>Last Delivery</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="font-family:var(--font-mono); color:var(--accent-cyan);">https://api.tenant.com/webhooks/cargo</td>
+                  <td><code>status_updated, delivered</code></td>
+                  <td><span class="badge badge-success">ACTIVE</span></td>
+                  <td>Today, 08:45 AM (HTTP 200 OK)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 7: Team & Access Management -->
+      <section class="portal-view" id="view-team">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Team Members &amp; Access Roles</h1>
+            <p>Control who has access to customer portal operations, billing, and API secrets.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Invitation link copied to clipboard.')">
+            + Invite Team Member
+          </button>
+        </div>
+
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>Role</th>
+                <th>Email</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight:700; color:var(--text-main);">Workspace Administrator</td>
+                <td><span class="badge badge-tier">ADMIN</span></td>
+                <td>admin@apexlogistics.com</td>
+                <td><span class="badge badge-success">ACTIVE</span></td>
+              </tr>
+              <tr>
+                <td style="font-weight:700; color:var(--text-main);">Operations Dispatcher</td>
+                <td><span class="badge badge-sea">OPERATOR</span></td>
+                <td>ops@apexlogistics.com</td>
+                <td><span class="badge badge-success">ACTIVE</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Create New API Key -->
+  <div class="modal-backdrop" id="createKeyModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><span>🔑</span> Create Production API Key</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <form id="createKeyForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Key Name / Description</label>
+            <input type="text" id="newKeyName" class="form-input" placeholder="e.g. Production TMS Integration" required>
+          </div>
+          <p style="font-size:0.8rem; color:var(--text-muted);">
+            This key will be granted full scopes (<code>tracking:live</code>, <code>tracking:read</code>, <code>shipments:batch</code>).
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+          <button type="submit" class="btn btn-primary">Generate Key</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Key Secret Reveal -->
+  <div class="modal-backdrop" id="keyRevealModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><span>🔐</span> Your Secret API Key</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:1rem;">
+          Please copy your secret key now. For security purposes, this full token will never be displayed again.
+        </p>
+        <div class="key-secret-reveal" id="secretKeyDisplay">cargotrk_live_...</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" id="copySecretKeyBtn">Copy Key to Clipboard</button>
+        <button type="button" class="btn btn-secondary modal-close">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Upgrade Subscription -->
+  <div class="modal-backdrop" id="upgradeModal">
+    <div class="modal-card" style="max-width:680px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><span>💳</span> Upgrade Subscription Plan</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:1.5rem;">
+          Select a higher tier to increase your monthly tracking volume quota and rate limits immediately.
+        </p>
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <div class="glass-panel" style="padding:1rem; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong>Growth Plan ($199/mo)</strong>
+              <div style="font-size:0.8rem; color:var(--text-muted);">2,500 tracks, 60 RPM, 10 keys</div>
+            </div>
+            <button class="btn btn-primary btn-sm select-tier-btn" data-tier="growth">Select Growth</button>
+          </div>
+          <div class="glass-panel" style="padding:1rem; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong>Business Plan ($699/mo)</strong>
+              <div style="font-size:0.8rem; color:var(--text-muted);">15,000 tracks, 300 RPM, 25 keys</div>
+            </div>
+            <button class="btn btn-primary btn-sm select-tier-btn" data-tier="business">Select Business</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/config.js?v=20261027_02"></script>
+  <script src="js/api.js?v=20261027_02"></script>
+  <script src="js/auth.js?v=20261027_02"></script>
+  <script src="js/portal.js?v=20261027_02"></script>
+</body>
+</html>

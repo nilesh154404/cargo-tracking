@@ -19,5 +19,11 @@ class CarrierIdentificationTool:
         query: str,
         explicit_mode: Optional[str] = None,
         db: Optional[Session] = None,
+        carrier_code_override: Optional[str] = None,
     ) -> IdentificationResult:
-        return parse_and_identify(query, explicit_mode=explicit_mode, db=db)
+        return parse_and_identify(
+            query,
+            explicit_mode=explicit_mode,
+            db=db,
+            carrier_code_override=carrier_code_override,
+        )

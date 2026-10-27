@@ -1,13 +1,52 @@
 import logging
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker, Session
 from app.config import settings
-from app.db.models import Base, Carrier
+from app.db.models import Base, Carrier, SubscriptionTier, Tenant, User, ApiKey, LocationCoordinate
+from app.core.security import hash_password, hash_api_key
 
 logger = logging.getLogger("shipment_tracking.db")
 
 engine = None
 SessionLocal = None
+
+
+def _auto_migrate(engine):
+    """Automatically add new columns to existing SQLite/MySQL tables if missing."""
+    with engine.begin() as conn:
+        for col, col_type in [
+            ("tenant_id", "INTEGER"),
+            ("customer_reference", "VARCHAR(100)"),
+            ("active_polling_enabled", "BOOLEAN DEFAULT 0"),
+            ("last_polled_at", "DATETIME"),
+            ("origin_lat", "FLOAT"),
+            ("origin_lng", "FLOAT"),
+            ("origin_code", "VARCHAR(50)"),
+            ("origin_name", "VARCHAR(255)"),
+            ("destination_lat", "FLOAT"),
+            ("destination_lng", "FLOAT"),
+            ("destination_code", "VARCHAR(50)"),
+            ("destination_name", "VARCHAR(255)"),
+            ("mawb_obl_no", "VARCHAR(100)"),
+            ("hawb_hbl_no", "VARCHAR(100)"),
+            ("vessel_name", "VARCHAR(150)"),
+            ("flight_no", "VARCHAR(50)"),
+        ]:
+            try:
+                conn.execute(text(f"ALTER TABLE shipments ADD COLUMN {col} {col_type}"))
+            except Exception:
+                pass
+
+        for col, col_type in [
+            ("latitude", "FLOAT"),
+            ("longitude", "FLOAT"),
+            ("location_code", "VARCHAR(50)"),
+            ("location_name", "VARCHAR(255)"),
+        ]:
+            try:
+                conn.execute(text(f"ALTER TABLE tracking_events ADD COLUMN {col} {col_type}"))
+            except Exception:
+                pass
 
 
 def init_db_engine():
@@ -39,7 +78,21 @@ def init_db_engine():
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.create_all(bind=engine)
-    seed_default_carriers()
+    _auto_migrate(engine)
+    
+    session = SessionLocal()
+    try:
+        seed_default_subscription_tiers(session)
+        seed_default_tenants(session)
+        seed_default_carriers(session)
+        try:
+            from app.scripts.seed_locations import seed_locations_if_needed
+            seed_locations_if_needed(force=False)
+        except Exception as seed_err:
+            logger.warning(f"Could not auto-seed location coordinates: {seed_err}")
+    finally:
+        session.close()
+
     return engine
 
 
@@ -50,11 +103,157 @@ def get_session() -> Session:
     return SessionLocal()
 
 
-def seed_default_carriers():
-    """Seed supported air and sea carriers."""
-    if not SessionLocal:
-        return
+def seed_default_subscription_tiers(session: Session):
+    """Seed public subscription plans."""
+    tiers = [
+        {
+            "code": "developer",
+            "name": "Developer (Free)",
+            "monthly_credits": 100,
+            "rate_limit_rpm": 10,
+            "max_api_keys": 2,
+            "allow_batch": False,
+            "allow_webhooks": True,
+            "allow_custom_carriers": False,
+            "price_usd_monthly": 0.0,
+        },
+        {
+            "code": "growth",
+            "name": "Growth Tier",
+            "monthly_credits": 2500,
+            "rate_limit_rpm": 60,
+            "max_api_keys": 10,
+            "allow_batch": True,
+            "allow_webhooks": True,
+            "allow_custom_carriers": False,
+            "price_usd_monthly": 199.0,
+        },
+        {
+            "code": "business",
+            "name": "Business Tier",
+            "monthly_credits": 15000,
+            "rate_limit_rpm": 300,
+            "max_api_keys": 25,
+            "allow_batch": True,
+            "allow_webhooks": True,
+            "allow_custom_carriers": True,
+            "price_usd_monthly": 699.0,
+        },
+        {
+            "code": "enterprise",
+            "name": "Enterprise Tier",
+            "monthly_credits": 1000000,
+            "rate_limit_rpm": 1200,
+            "max_api_keys": 100,
+            "allow_batch": True,
+            "allow_webhooks": True,
+            "allow_custom_carriers": True,
+            "price_usd_monthly": 2499.0,
+        },
+    ]
+    try:
+        for t in tiers:
+            existing = session.execute(
+                select(SubscriptionTier).where(SubscriptionTier.code == t["code"])
+            ).scalar_one_or_none()
+            if not existing:
+                session.add(SubscriptionTier(**t))
+            else:
+                for k, v in t.items():
+                    setattr(existing, k, v)
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.error(f"Error seeding subscription tiers: {exc}")
 
+
+def seed_default_tenants(session: Session):
+    """Seed default enterprise organization, admin user, and initial API key."""
+    try:
+        tenant = session.execute(
+            select(Tenant).where(Tenant.slug == settings.DEFAULT_TENANT_SLUG)
+        ).scalar_one_or_none()
+        if not tenant:
+            tenant = Tenant(
+                slug=settings.DEFAULT_TENANT_SLUG,
+                name=settings.DEFAULT_TENANT_NAME,
+                tier_code="enterprise",
+                monthly_quota=1000000,
+                current_usage=0,
+                rate_limit_rpm=1200,
+                allow_overage=True,
+                is_active=True,
+            )
+            session.add(tenant)
+            session.flush()
+
+        # Global Platform Superadmin accounts (no tenant)
+        for sa_email in ["superadmin@cargotrack.io", "admin@cargotrack.io"]:
+            sa_user = session.execute(
+                select(User).where(User.email == sa_email)
+            ).scalar_one_or_none()
+            if not sa_user:
+                sa_user = User(
+                    tenant_id=None,
+                    email=sa_email,
+                    password_hash=hash_password("SuperAdmin@2026!Cargo"),
+                    full_name="Global Platform Superadmin",
+                    role="SUPER_ADMIN",
+                    is_active=True,
+                )
+                session.add(sa_user)
+            else:
+                sa_user.role = "SUPER_ADMIN"
+                sa_user.is_active = True
+                sa_user.password_hash = hash_password("SuperAdmin@2026!Cargo")
+
+        # Demo Organization Tenant Admin accounts
+        for demo_email, demo_pwd in [
+            ("admin@demologistics.com", "demo123"),
+            ("admin@apexlogistics.com", "demo123"),
+            ("admin@apex-logistics.test", "Password@2026!Secure"),
+        ]:
+            demo_user = session.execute(
+                select(User).where(User.email == demo_email)
+            ).scalar_one_or_none()
+            if not demo_user:
+                demo_user = User(
+                    tenant_id=tenant.id,
+                    email=demo_email,
+                    password_hash=hash_password(demo_pwd),
+                    full_name="Demo Organization Admin",
+                    role="ADMIN",
+                    is_active=True,
+                )
+                session.add(demo_user)
+            else:
+                demo_user.is_active = True
+                demo_user.password_hash = hash_password(demo_pwd)
+
+        demo_key = "cargotrk_live_defaultdemo00000000000000000"
+        demo_key_hash = hash_api_key(demo_key)
+        existing_key = session.execute(
+            select(ApiKey).where(ApiKey.key_hash == demo_key_hash)
+        ).scalar_one_or_none()
+        if not existing_key:
+            api_key_obj = ApiKey(
+                tenant_id=tenant.id,
+                name="Default Demo Master Key",
+                key_prefix=demo_key[:18],
+                key_hash=demo_key_hash,
+                scopes="tracking:live,tracking:read,shipments:batch,webhooks:write,admin:manage",
+                is_active=True,
+            )
+            session.add(api_key_obj)
+
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.error(f"Error seeding default tenant/admin: {exc}")
+
+
+def seed_default_carriers(session: Session):
+    """Seed supported air and sea carriers."""
     carriers_data = [
         # AIR CARRIERS
         {
@@ -99,15 +298,15 @@ def seed_default_carriers():
         },
         {
             "code": "MSK",
-            "prefix": "MAEU,MRSU,MSKU",
+            "prefix": "MAEU,MRSU,MSKU,MRKU,HASU,SUDU",
             "name": "Maersk Line",
             "mode": "SEA",
-            "primary_provider": "ldb_container",
-            "fallback_providers": "generic_ocean",
+            "primary_provider": "maersk",
+            "fallback_providers": "ldb_container,generic_ocean",
         },
         {
             "code": "MSC",
-            "prefix": "MSCU,MSMU,MEDU",
+            "prefix": "MSCU,MSMU,MEDU,MSDU,MSNU",
             "name": "Mediterranean Shipping Company",
             "mode": "SEA",
             "primary_provider": "msc",
@@ -118,12 +317,11 @@ def seed_default_carriers():
             "prefix": "ONEU,ONEY",
             "name": "Ocean Network Express (ONE)",
             "mode": "SEA",
-            "primary_provider": "ldb_container",
-            "fallback_providers": "generic_ocean",
+            "primary_provider": "one_line",
+            "fallback_providers": "ldb_container,generic_ocean",
         },
     ]
 
-    session: Session = SessionLocal()
     try:
         for c in carriers_data:
             existing = session.execute(
@@ -141,8 +339,6 @@ def seed_default_carriers():
     except Exception as exc:
         session.rollback()
         logger.error(f"Error seeding carriers: {exc}")
-    finally:
-        session.close()
 
 
 def get_db():

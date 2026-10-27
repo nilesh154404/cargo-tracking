@@ -225,7 +225,7 @@ class LdbContainerProvider(BaseProvider):
                 carrier_label = "Ocean Network Express (ONE) / LDB"
             elif prefix_upper in ("MRSU", "MAEU", "MSKU", "APMU", "MNBU") or (vessel_name and "MAERSK" in vessel_name.upper()):
                 carrier_label = "Maersk Line / LDB"
-            elif prefix_upper in ("MSCU", "MSMU", "MEDU"):
+            elif prefix_upper in ("MSCU", "MSMU", "MEDU", "MSDU", "MSNU"):
                 carrier_label = "MSC / LDB"
             else:
                 carrier_label = f"Shipping Line ({prefix_upper}) / LDB"

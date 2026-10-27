@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Superadmin &amp; Staff Backoffice | CargoTrk Intelligence</title>
+  <link rel="stylesheet" href="css/theme.css?v=20261027_02">
+  <link rel="stylesheet" href="css/portal.css?v=20261027_02">
+  <link rel="stylesheet" href="css/staff.css?v=20261027_02">
+</head>
+<body>
+
+  <div class="app-wrapper">
+    <!-- Left Navigation Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <a href="index.html" class="sidebar-brand">
+          <div class="brand-icon" style="background:var(--grad-blue-purple); width:32px; height:32px; font-size:1rem; color:#fff;">🛡️</div>
+          <span>Platform<span style="color:#b91c1c;">.Staff</span></span>
+        </a>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item-btn staff-nav-btn active" data-section="cockpit">
+          <span>📈</span> Platform Cockpit
+        </button>
+        <button class="nav-item-btn staff-nav-btn" data-section="tenants">
+          <span>🏢</span> Tenant Directory
+        </button>
+        <button class="nav-item-btn staff-nav-btn" data-section="carriers">
+          <span>🌐</span> Carrier Health SLA
+        </button>
+        <button class="nav-item-btn staff-nav-btn" data-section="logs">
+          <span>🔍</span> Provider cURL Logs
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="staff-badge">SUPER_ADMIN</span>
+        <button class="btn btn-secondary btn-sm" id="staffLogoutBtn" style="width:100%; margin-top:0.75rem;">
+          Sign Out Staff
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <!-- Top Application Header -->
+      <header class="app-header">
+        <div class="tenant-selector">
+          <span class="staff-badge">INTERNAL OPERATIONS</span>
+          <span style="color:var(--text-main); font-weight:700; font-size:0.95rem;">Global Infrastructure &amp; Commercial Backoffice</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:1rem;">
+          <a href="portal.html" class="btn btn-secondary btn-sm">
+            Launch Customer Portal ➔
+          </a>
+        </div>
+      </header>
+
+      <!-- SECTION 1: Platform KPI Cockpit -->
+      <section class="portal-view staff-section active" id="sec-cockpit">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Platform Overview &amp; Health Cockpit</h1>
+            <p>Macro-level commercial telemetry and infrastructure health metrics across all tenant organizations.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="location.reload()">
+            Refresh Metrics
+          </button>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Enterprise Tenants</div>
+            <div class="stat-value" id="statTotalTenants">0</div>
+            <div class="stat-sub">Active Organizations</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Monthly Platform Requests</div>
+            <div class="stat-value" id="statPlatformReqs" style="color:var(--accent-cyan);">0</div>
+            <div class="stat-sub">Metered API Consumption</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Platform MRR (USD)</div>
+            <div class="stat-value" id="statMrrUsd" style="color:var(--accent-emerald);">$0</div>
+            <div class="stat-sub">Monthly Recurring Revenue</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Overall Success Rate</div>
+            <div class="stat-value" id="statSuccessRate" style="color:var(--accent-emerald);">100%</div>
+            <div class="stat-sub">Across All Carriers</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Average Provider Latency</div>
+            <div class="stat-value" id="statAvgLatency">-- ms</div>
+            <div class="stat-sub">Sub-second Execution</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Monitored Shipments</div>
+            <div class="stat-value" id="statTotalShipments">0</div>
+            <div class="stat-sub">Database Snapshots</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 2: Tenant Directory & 360 Customer Management -->
+      <section class="portal-view staff-section" id="sec-tenants">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Enterprise Tenant Directory</h1>
+            <p>Manage subscription quotas, grant bonus tracking credits, and impersonate tenant workspaces for troubleshooting.</p>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-toolbar">
+            <div class="search-wrapper">
+              <input type="text" id="tenantSearchInput" class="form-input" placeholder="Search by organization name or slug...">
+            </div>
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Organization &amp; Slug</th>
+                  <th>Tier</th>
+                  <th>Usage / Monthly Quota</th>
+                  <th>Active Keys</th>
+                  <th>Account Status</th>
+                  <th>Joined Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminTenantsTbody">
+                <tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--text-muted);">Loading tenants...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: Carrier Health SLA & Routing -->
+      <section class="portal-view staff-section" id="sec-carriers">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Carrier Health SLA &amp; Provider Monitoring</h1>
+            <p>Live connectivity status across all 20+ Air Cargo providers and Ocean lines with automated fallback telemetry.</p>
+          </div>
+        </div>
+
+        <div class="health-grid" id="carrierHealthGrid">
+          <div style="color:var(--text-muted); padding:2rem;">Querying carrier endpoints...</div>
+        </div>
+      </section>
+
+      <!-- SECTION 4: Provider Execution Log Stream & cURL Debugger -->
+      <section class="portal-view staff-section" id="sec-logs">
+        <div class="view-header">
+          <div class="view-title-group">
+            <h1>Global Provider Execution Logs</h1>
+            <p>Real-time audit log of all outgoing carrier queries with full cURL replayers for debugging failures.</p>
+          </div>
+        </div>
+
+        <div class="log-stream-card">
+          <div class="log-row log-header">
+            <div>Timestamp</div>
+            <div>Identifier</div>
+            <div>Provider</div>
+            <div>Status</div>
+            <div>Latency</div>
+            <div>Diagnostics</div>
+            <div>Action</div>
+          </div>
+          <div id="adminLogsContainer">
+            <div style="padding:2rem; text-align:center; color:var(--text-muted);">Loading logs...</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Adjust Tenant Quota -->
+  <div class="modal-backdrop" id="adjustQuotaModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><span>⚙️</span> Adjust Tenant Quota: <span id="modalTenantNameDisplay"></span></h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <form id="adjustQuotaForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Monthly Tracking Quota</label>
+            <input type="number" id="adjustQuotaInput" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Add Instant Bonus Credits</label>
+            <input type="number" id="addBonusCreditsInput" class="form-input" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Change Plan Tier</label>
+            <select id="changeTierSelect" class="form-select">
+              <option value="">Keep Current Tier</option>
+              <option value="developer">Developer Plan</option>
+              <option value="growth">Growth Plan</option>
+              <option value="business">Business Plan</option>
+              <option value="enterprise">Enterprise Plan</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
+            <input type="checkbox" id="resetUsageCheck" style="accent-color:var(--accent-cyan);">
+            <label for="resetUsageCheck" style="font-size:0.85rem; color:var(--text-secondary); cursor:pointer;">
+              Reset Current Month's Usage Counter to 0
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: cURL Inspector -->
+  <div class="modal-backdrop" id="curlInspectModal">
+    <div class="modal-card" style="max-width:700px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><span>🔍</span> Outgoing Provider cURL Command</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="curl-preview-box" id="curlInspectContent">
+          curl -X GET ...
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" onclick="navigator.clipboard.writeText(document.getElementById('curlInspectContent').textContent); window.showToast('cURL copied!', 'success');">Copy cURL</button>
+        <button type="button" class="btn btn-secondary modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/config.js?v=20261027_02"></script>
+  <script src="js/api.js?v=20261027_02"></script>
+  <script src="js/auth.js?v=20261027_02"></script>
+  <script src="js/staff.js?v=20261027_02"></script>
+</body>
+</html>

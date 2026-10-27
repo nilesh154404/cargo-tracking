@@ -1,0 +1,115 @@
+/* Superadmin & Internal Staff Backoffice Styles (/staff) - Light Theme */
+
+.staff-badge {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  font-family: var(--font-mono);
+  font-size: 0.725rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.05em;
+}
+
+/* Carrier Health Grid */
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+.health-card {
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-smooth);
+}
+.health-card:hover {
+  border-color: var(--border-medium);
+  box-shadow: var(--shadow-md);
+}
+.health-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.health-provider-name {
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--text-main);
+}
+.health-metrics-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Provider Execution Log Explorer */
+.log-stream-card {
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  box-shadow: var(--shadow-sm);
+}
+.log-row {
+  display: grid;
+  grid-template-columns: 140px 100px 120px 90px 80px 1fr 100px;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+  transition: background var(--transition-fast);
+}
+.log-row:hover {
+  background: #f8fafc;
+}
+.log-header {
+  background: var(--bg-secondary);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 0.725rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.log-curl-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  color: var(--accent-cyan);
+  padding: 0.25rem 0.55rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.log-curl-btn:hover {
+  background: #e0f2fe;
+  border-color: var(--accent-cyan);
+}
+
+/* cURL Inspector Modal */
+.curl-preview-box {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.825rem;
+  line-height: 1.6;
+  color: #38bdf8;
+  max-height: 350px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from app.main import app
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-API-Key": "cargotrk_live_defaultdemo00000000000000000"})
 
 
 def test_api_root():
@@ -71,7 +71,7 @@ def test_api_track_air_post():
     assert data["tracking_number"] == "160-15246221"
     assert data["carrier"]["code"] == "CX"
     assert data["agent_trail"]["carrier_code"] == "CX"
-    assert data["agent_trail"]["final_provider_used"] == "cathay_cargo"
+    assert data["agent_trail"]["final_provider_used"] in ("cathay_cargo", "db_cache (cathay_cargo)")
 
 
 def test_api_track_path_based():
@@ -90,8 +90,20 @@ def test_api_track_sea_get():
     data = response.json()
     assert data["mode"] == "SEA"
     assert data["carrier"]["code"] == "MSC"
-    assert data["agent_trail"]["final_provider_used"] == "msc"
+    assert data["agent_trail"]["final_provider_used"] in ("msc", "db_cache (msc)")
     assert data["status"] == "Delivered"
+
+
+def test_api_track_sea_medu_get():
+    response = client.get("/api/v1/track?query=MEDU9650838")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["mode"] == "SEA"
+    assert data["carrier"]["code"] == "MSC"
+    assert data["carrier"]["name"] == "Mediterranean Shipping Company"
+    assert data["agent_trail"]["final_provider_used"] in ("msc", "db_cache (msc)")
+    assert data["status"] in ("Delivered", "In Transit")
+    assert len(data["events"]) > 0
 
 
 def test_api_history_auto_track():
@@ -109,3 +121,44 @@ def test_api_cathay_token_direct():
     data = response.json()
     assert "access_token" in data
     assert data["token_type"] == "Bearer"
+
+
+def test_api_events_descending_order():
+    response = client.post("/api/v1/track", json={"query": "16015246221"})
+    assert response.status_code == 200
+    data = response.json()
+    events = data.get("events", [])
+    assert len(events) >= 2
+    # Verify latest event is first and timestamps are descending
+    for i in range(len(events) - 1):
+        t_curr = events[i].get("event_time")
+        t_next = events[i + 1].get("event_time")
+        if t_curr and t_next:
+            assert t_curr >= t_next
+
+
+def test_api_mobile_events_descending_order():
+    response = client.post("/api/v1/track?response_type=mobile-app", json={"query": "16015246221"})
+    assert response.status_code == 200
+    data = response.json()
+    events = data.get("events", [])
+    assert len(events) >= 2
+    for i in range(len(events) - 1):
+        t_curr = events[i].get("time")
+        t_next = events[i + 1].get("time")
+        if t_curr and t_next:
+            assert t_curr >= t_next
+
+
+def test_api_history_events_descending_order():
+    response = client.get("/api/v1/history/160-15246221")
+    assert response.status_code == 200
+    data = response.json()
+    events = data.get("events", [])
+    assert len(events) >= 2
+    for i in range(len(events) - 1):
+        t_curr = events[i].get("event_time")
+        t_next = events[i + 1].get("event_time")
+        if t_curr and t_next:
+            assert t_curr >= t_next
+

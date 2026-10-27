@@ -1,0 +1,15 @@
+{
+  "name": "cargo-tracking-frontend",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 8088",
+    "build": "next build",
+    "start": "next start -p 8088"
+  },
+  "dependencies": {
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}
