@@ -1,6 +1,8 @@
 /**
  * Enterprise Cargo Intelligence API Client for Next.js
  */
+import { getMockContainerTelemetry } from "./mockContainers";
+
 const API_BASE = "/api/v1";
 
 export const STORAGE_KEYS = {
@@ -109,6 +111,41 @@ export async function batchTrackShipments(items) {
 
 export async function getShipmentHistory(limit = 50) {
   return apiRequest(`/shipments?limit=${limit}`);
+}
+
+export async function getTrackingInspectionData(trackingNumber) {
+  const clean = String(trackingNumber || "").trim().toUpperCase();
+  if (!clean) return getMockContainerTelemetry("MSMU6484830");
+
+  try {
+    const [stdResp, mobResp, histResp] = await Promise.all([
+      apiRequest(`/track/${encodeURIComponent(clean)}?response_type=standard`).catch(() => null),
+      apiRequest(`/track/${encodeURIComponent(clean)}?response_type=mobile-app`).catch(() => null),
+      apiRequest(`/history/${encodeURIComponent(clean)}?auto_track=false`).catch(() => null),
+    ]);
+
+    if (stdResp || mobResp || histResp) {
+      const standard = stdResp || histResp || {};
+      const mobileApp = mobResp || {};
+      const events = standard.events || histResp?.events || [];
+      return {
+        standard,
+        mobileApp,
+        events,
+        source: "live_backend"
+      };
+    }
+  } catch (err) {
+    console.warn("Live inspection telemetry fallback:", err);
+  }
+
+  const mock = getMockContainerTelemetry(clean);
+  return {
+    standard: mock.standard,
+    mobileApp: mock.mobileApp,
+    events: mock.standard?.events || [],
+    source: "mock_engine"
+  };
 }
 
 // Authentication & Tenant Session APIs

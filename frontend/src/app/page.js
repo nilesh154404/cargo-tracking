@@ -155,7 +155,7 @@ export default function MarketingHomePage() {
             <span>CargoTrk<span style={{ color: "var(--accent-cyan)" }}>.io</span></span>
           </Link>
 
-          <nav style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
+          <nav className="landing-desktop-nav" style={{ display: "flex", alignItems: "center", gap: "1.75rem" }}>
             <a href="#tracker" style={{ fontSize: "0.9rem", fontWeight: "600", color: "var(--text-secondary)" }}>Live Tracker</a>
             <a href="#network" style={{ fontSize: "0.9rem", fontWeight: "600", color: "var(--text-secondary)" }}>Carriers</a>
             <a href="#code" style={{ fontSize: "0.9rem", fontWeight: "600", color: "var(--text-secondary)" }}>API Quickstart</a>
@@ -207,7 +207,7 @@ export default function MarketingHomePage() {
           </p>
 
           {/* Interactive Ocean Container Tracking Sandbox */}
-          <div className="card" style={{ maxWidth: "1050px", margin: "0 auto", padding: "2.5rem", boxShadow: "var(--shadow-xl)" }}>
+          <div className="card card-playground" style={{ maxWidth: "1050px", margin: "0 auto", boxShadow: "var(--shadow-xl)" }}>
             {/* Search Row */}
             <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1.25rem" }}>
               <div style={{ flex: "1", minWidth: "280px", position: "relative" }}>
@@ -350,8 +350,8 @@ export default function MarketingHomePage() {
                 </div>
 
                 {/* Visual Milestone Journey Bar */}
-                <div style={{ margin: "1.75rem 0", padding: "0 0.5rem" }}>
-                  <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ margin: "1.75rem 0", padding: "0 0.5rem", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                  <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", minWidth: "480px" }}>
                     {/* Background track line */}
                     <div style={{ position: "absolute", left: "20px", right: "20px", top: "18px", height: "4px", background: "var(--border-subtle)", zIndex: 1 }} />
                     {/* Active progress connector */}
@@ -465,7 +465,7 @@ export default function MarketingHomePage() {
                 {/* TAB VIEWS */}
                 {/* 1. SPLIT VIEW: Both Formats Side-by-Side */}
                 {formatMode === "split" && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: "1.25rem" }}>
+                  <div className="grid-responsive-split">
                     {/* Left: Standard Format */}
                     <div style={{
                       background: "#0f172a",

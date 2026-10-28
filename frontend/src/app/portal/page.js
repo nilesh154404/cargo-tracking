@@ -15,8 +15,10 @@ import {
   upgradeSubscriptionPlan,
   getShipmentHistory,
   getTenantUsageLogs,
+  getTrackingInspectionData,
   STORAGE_KEYS
 } from "@/lib/api";
+import TrackingInspectionModal from "@/components/TrackingInspectionModal";
 
 export default function TenantPortalPage() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -77,6 +79,40 @@ export default function TenantPortalPage() {
   const [usageFilterStatus, setUsageFilterStatus] = useState("ALL");
   const [usagePageOffset, setUsagePageOffset] = useState(0);
   const [usagePageLimit, setUsagePageLimit] = useState(25);
+
+  // Mobile Drawer & View Details Inspection Modal State
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [inspectModalOpen, setInspectModalOpen] = useState(false);
+  const [inspectLog, setInspectLog] = useState(null);
+  const [inspectData, setInspectData] = useState({ standard: null, mobileApp: null, events: [] });
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectView, setInspectView] = useState("timeline"); // "timeline" | "standard" | "mobile" | "audit"
+  const [inspectCopied, setInspectCopied] = useState(null);
+
+  const handleInspectUsageLog = async (logItem) => {
+    if (!logItem) return;
+    const trackingNum = logItem.tracking_number || logItem.awb_number || logItem.container_number;
+    setInspectLog(logItem);
+    setInspectModalOpen(true);
+    setInspectLoading(true);
+    setInspectView("timeline");
+    try {
+      const details = await getTrackingInspectionData(trackingNum);
+      setInspectData(details);
+    } catch (err) {
+      console.warn("Inspection load error:", err);
+    } finally {
+      setInspectLoading(false);
+    }
+  };
+
+  const copyInspectJson = (obj, type) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(JSON.stringify(obj, null, 2));
+      setInspectCopied(type);
+      setTimeout(() => setInspectCopied(null), 2500);
+    }
+  };
 
   useEffect(() => {
     loadPortalData();
@@ -399,20 +435,35 @@ export default function TenantPortalPage() {
   const pct = Math.min(Math.round((used / quota) * 100), 100);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-primary)" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-primary)", position: "relative" }}>
+      {/* Mobile Sidebar Backdrop */}
+      {mobileMenuOpen && (
+        <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
       {/* Left Navigation Sidebar */}
-      <aside style={{ width: "260px", background: "#ffffff", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--border-subtle)" }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.2rem", fontWeight: "800", color: "#0f172a" }}>
-            <span>⚡</span>
-            <span>CargoTrk<span style={{ color: "var(--accent-cyan)" }}>.io</span></span>
-          </Link>
-          <div style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-            Tenant: <strong>{tenant?.name || "My Organization"}</strong>
+      <aside className={`app-sidebar ${mobileMenuOpen ? "open" : ""}`} style={{ width: "260px", background: "#ffffff", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.2rem", fontWeight: "800", color: "#0f172a" }}>
+              <span>⚡</span>
+              <span>CargoTrk<span style={{ color: "var(--accent-cyan)" }}>.io</span></span>
+            </Link>
+            <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+              Tenant: <strong>{tenant?.name || "My Organization"}</strong>
+            </div>
           </div>
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="mobile-menu-btn"
+            style={{ width: "32px", height: "32px", fontSize: "1rem" }}
+            title="Close menu"
+          >
+            ✕
+          </button>
         </div>
 
-        <nav style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
+        <nav style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, overflowY: "auto" }}>
           {[
             { id: "dashboard", label: "Overview Dashboard", icon: "📊" },
             { id: "tracker", label: "Live Cargo Tracker", icon: "🔍" },
@@ -425,6 +476,7 @@ export default function TenantPortalPage() {
               key={item.id}
               onClick={() => {
                 setActiveTab(item.id);
+                setMobileMenuOpen(false);
                 if (item.id === "history") {
                   handleLoadUsageLogs();
                 }
@@ -462,9 +514,9 @@ export default function TenantPortalPage() {
       </aside>
 
       {/* Main Content Area */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {/* Top Header Bar */}
-        <header style={{
+        <header className="app-header-bar" style={{
           height: "72px",
           background: "#ffffff",
           borderBottom: "1px solid var(--border-subtle)",
@@ -474,8 +526,15 @@ export default function TenantPortalPage() {
           padding: "0 2rem",
           boxShadow: "var(--shadow-sm)"
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <button
+              className="mobile-menu-btn"
+              onClick={() => setMobileMenuOpen(true)}
+              title="Open Navigation Menu"
+            >
+              ☰
+            </button>
+            <h2 className="app-header-title" style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a" }}>
               {activeTab === "dashboard" && "Workspace Dashboard"}
               {activeTab === "tracker" && "Live Cargo Inspector"}
               {activeTab === "history" && "Usage Logs & Audit History"}
@@ -483,7 +542,7 @@ export default function TenantPortalPage() {
               {activeTab === "apikeys" && "Developer Center & API Keys"}
               {activeTab === "billing" && "Subscription & Quota Management"}
             </h2>
-            <span className="badge badge-air">{(tenant?.tier_code || "DEVELOPER").toUpperCase()} TIER</span>
+            <span className="badge badge-air app-header-badge">{(tenant?.tier_code || "DEVELOPER").toUpperCase()} TIER</span>
           </div>
 
           {/* Quota Progress Pill */}
@@ -632,22 +691,33 @@ export default function TenantPortalPage() {
                               </span>
                             </td>
                             <td>
-                              <button
-                                onClick={() => {
-                                  setTrackQuery(s.tracking_number);
-                                  if (s.transport_mode === "AIR") setMawbOblNo(s.tracking_number);
-                                  else setContainerNo(s.tracking_number);
-                                  setActiveTab("tracker");
-                                  handleSingleTrack(null, {
-                                    MAWB_OBL_NO: s.transport_mode === "AIR" ? s.tracking_number : "",
-                                    CONTAINER_NO: s.transport_mode === "SEA" ? s.tracking_number : "",
-                                    query: s.tracking_number
-                                  });
-                                }}
-                                className="btn btn-secondary btn-sm"
-                              >
-                                View Details ➔
-                              </button>
+                              <div style={{ display: "flex", gap: "0.35rem" }}>
+                                <button
+                                  onClick={() => handleInspectUsageLog(s)}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ fontSize: "0.78rem", padding: "0.28rem 0.55rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                                >
+                                  <span>👁️</span> View Details
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setTrackQuery(s.tracking_number);
+                                    if (s.transport_mode === "AIR") setMawbOblNo(s.tracking_number);
+                                    else setContainerNo(s.tracking_number);
+                                    setActiveTab("tracker");
+                                    handleSingleTrack(null, {
+                                      MAWB_OBL_NO: s.transport_mode === "AIR" ? s.tracking_number : "",
+                                      CONTAINER_NO: s.transport_mode === "SEA" ? s.tracking_number : "",
+                                      query: s.tracking_number
+                                    });
+                                  }}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ fontSize: "0.78rem", padding: "0.28rem 0.45rem" }}
+                                  title="Re-track in Live Tracker tab"
+                                >
+                                  ⚡
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ));
@@ -1379,27 +1449,37 @@ export default function TenantPortalPage() {
                                 {log.request_ip || "Direct"}
                               </td>
                               <td style={{ textAlign: "right" }}>
-                                <button
-                                  onClick={() => {
-                                    setTrackQuery(log.tracking_number);
-                                    if (log.transport_mode === "AIR") {
-                                      setMawbOblNo(log.tracking_number);
-                                    } else {
-                                      setContainerNo(log.tracking_number);
-                                    }
-                                    if (log.carrier_code) setCarrierCode(log.carrier_code);
-                                    setActiveTab("tracker");
-                                    handleSingleTrack(null, {
-                                      MAWB_OBL_NO: log.transport_mode === "AIR" ? log.tracking_number : "",
-                                      CONTAINER_NO: log.transport_mode === "SEA" ? log.tracking_number : "",
-                                      query: log.tracking_number
-                                    });
-                                  }}
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ fontSize: "0.8rem", padding: "0.3rem 0.65rem" }}
-                                >
-                                  Track Again ➔
-                                </button>
+                                <div style={{ display: "inline-flex", gap: "0.4rem", justifyContent: "flex-end" }}>
+                                  <button
+                                    onClick={() => handleInspectUsageLog(log)}
+                                    className="btn btn-primary btn-sm"
+                                    style={{ fontSize: "0.78rem", padding: "0.3rem 0.65rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                                  >
+                                    <span>👁️</span> View Details
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setTrackQuery(log.tracking_number);
+                                      if (log.transport_mode === "AIR") {
+                                        setMawbOblNo(log.tracking_number);
+                                      } else {
+                                        setContainerNo(log.tracking_number);
+                                      }
+                                      if (log.carrier_code) setCarrierCode(log.carrier_code);
+                                      setActiveTab("tracker");
+                                      handleSingleTrack(null, {
+                                        MAWB_OBL_NO: log.transport_mode === "AIR" ? log.tracking_number : "",
+                                        CONTAINER_NO: log.transport_mode === "SEA" ? log.tracking_number : "",
+                                        query: log.tracking_number
+                                      });
+                                    }}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ fontSize: "0.78rem", padding: "0.3rem 0.55rem" }}
+                                    title="Re-run live tracker tab"
+                                  >
+                                    ⚡ Re-Track
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1748,6 +1828,30 @@ export default function TenantPortalPage() {
           </div>
         </div>
       )}
+
+      {/* Inspection Modal for Usage History & Recent Cargo (Standard, Mobile-App, Timeline, Audit) */}
+      <TrackingInspectionModal
+        isOpen={inspectModalOpen}
+        onClose={() => setInspectModalOpen(false)}
+        logItem={inspectLog}
+        data={inspectData}
+        loading={inspectLoading}
+        activeView={inspectView}
+        setActiveView={setInspectView}
+        onRetrack={(trNum, trMode, crCode) => {
+          setInspectModalOpen(false);
+          setTrackQuery(trNum);
+          if (trMode === "AIR") setMawbOblNo(trNum);
+          else setContainerNo(trNum);
+          if (crCode) setCarrierCode(crCode);
+          setActiveTab("tracker");
+          handleSingleTrack(null, {
+            MAWB_OBL_NO: trMode === "AIR" ? trNum : "",
+            CONTAINER_NO: trMode === "SEA" ? trNum : "",
+            query: trNum
+          });
+        }}
+      />
     </div>
   );
 }

@@ -11,9 +11,11 @@ import {
   getCarrierHealthSla,
   getProviderExecutionLogs,
   getAdminUsageLogs,
+  getTrackingInspectionData,
   loginUser,
   STORAGE_KEYS
 } from "@/lib/api";
+import TrackingInspectionModal from "@/components/TrackingInspectionModal";
 
 export default function SuperadminStaffBackofficePage() {
   const [activeTab, setActiveTab] = useState("tenants");
@@ -63,6 +65,31 @@ export default function SuperadminStaffBackofficePage() {
   // cURL Inspect Modal State
   const [curlModalOpen, setCurlModalOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
+
+  // Responsive Drawer & Multi-Format Inspection Modal State
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [inspectModalOpen, setInspectModalOpen] = useState(false);
+  const [inspectLog, setInspectLog] = useState(null);
+  const [inspectData, setInspectData] = useState({ standard: null, mobileApp: null, events: [] });
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectView, setInspectView] = useState("timeline"); // "timeline" | "standard" | "mobile" | "audit"
+
+  const handleInspectUsageLog = async (logItem) => {
+    if (!logItem) return;
+    const trackingNum = logItem.tracking_number || logItem.awb_number || logItem.container_number;
+    setInspectLog(logItem);
+    setInspectModalOpen(true);
+    setInspectLoading(true);
+    setInspectView("timeline");
+    try {
+      const details = await getTrackingInspectionData(trackingNum);
+      setInspectData(details);
+    } catch (err) {
+      console.warn("Staff inspection load error:", err);
+    } finally {
+      setInspectLoading(false);
+    }
+  };
 
   useEffect(() => {
     checkStaffAuth();
@@ -283,19 +310,34 @@ export default function SuperadminStaffBackofficePage() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-primary)" }}>
+      {/* Mobile Drawer Backdrop */}
+      {mobileMenuOpen && (
+        <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
       {/* Sidebar */}
-      <aside style={{ width: "260px", background: "#ffffff", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--border-subtle)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.2rem", fontWeight: "800", color: "#0f172a" }}>
-            <span>🛡️</span>
-            <span>CargoTrk <span style={{ color: "var(--accent-rose)", fontSize: "0.85rem" }}>STAFF</span></span>
+      <aside className={`app-sidebar ${mobileMenuOpen ? "open" : ""}`} style={{ width: "260px", background: "#ffffff", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.2rem", fontWeight: "800", color: "#0f172a" }}>
+              <span>🛡️</span>
+              <span>CargoTrk <span style={{ color: "var(--accent-rose)", fontSize: "0.85rem" }}>STAFF</span></span>
+            </div>
+            <div style={{ marginTop: "0.5rem", fontSize: "0.78rem", color: "var(--text-muted)" }}>
+              Root Platform Administration
+            </div>
           </div>
-          <div style={{ marginTop: "0.5rem", fontSize: "0.78rem", color: "var(--text-muted)" }}>
-            Root Platform Administration
-          </div>
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="mobile-menu-btn"
+            style={{ width: "32px", height: "32px", fontSize: "1rem" }}
+            title="Close menu"
+          >
+            ✕
+          </button>
         </div>
 
-        <nav style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
+        <nav style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, overflowY: "auto" }}>
           {[
             { id: "tenants", label: "Tenant Directory & Onboarding", icon: "🏢" },
             { id: "usagelogs", label: "Global Usage & Audit History", icon: "📜" },
@@ -306,6 +348,7 @@ export default function SuperadminStaffBackofficePage() {
               key={item.id}
               onClick={() => {
                 setActiveTab(item.id);
+                setMobileMenuOpen(false);
                 if (item.id === "usagelogs") {
                   handleLoadAdminUsageLogs();
                 }
@@ -322,7 +365,8 @@ export default function SuperadminStaffBackofficePage() {
                 fontWeight: activeTab === item.id ? "700" : "500",
                 fontSize: "0.9rem",
                 textAlign: "left",
-                cursor: "pointer"
+                cursor: "pointer",
+                transition: "all 0.15s ease"
               }}
             >
               <span>{item.icon}</span>
@@ -342,9 +386,9 @@ export default function SuperadminStaffBackofficePage() {
       </aside>
 
       {/* Main Content */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {/* Top Header */}
-        <header style={{
+        <header className="app-header-bar" style={{
           height: "72px",
           background: "#ffffff",
           borderBottom: "1px solid var(--border-subtle)",
@@ -355,13 +399,21 @@ export default function SuperadminStaffBackofficePage() {
           boxShadow: "var(--shadow-sm)"
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a" }}>
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="mobile-menu-btn"
+              title="Open Navigation"
+              aria-label="Open Navigation Menu"
+            >
+              ☰
+            </button>
+            <h2 className="app-header-title" style={{ fontSize: "1.25rem", fontWeight: "700", color: "#0f172a", margin: 0 }}>
               {activeTab === "tenants" && "Enterprise Tenants & Onboarding"}
               {activeTab === "usagelogs" && "Global Tenant Usage & Tracking History"}
               {activeTab === "carriers" && "Carrier Health SLA & Dynamic Routing"}
               {activeTab === "telemetry" && "Provider Telemetry & Debugger"}
             </h2>
-            <span className="badge badge-danger">SUPERADMIN PRIVILEGE</span>
+            <span className="badge badge-danger app-header-badge">SUPERADMIN PRIVILEGE</span>
           </div>
 
           <div style={{ display: "flex", gap: "0.75rem" }}>
@@ -611,19 +663,20 @@ export default function SuperadminStaffBackofficePage() {
                       <th>Status</th>
                       <th>Credits</th>
                       <th>Request IP</th>
+                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {usageRecordsLoading ? (
                       <tr>
-                        <td colSpan={9} style={{ textAlign: "center", padding: "3rem" }}>
+                        <td colSpan={10} style={{ textAlign: "center", padding: "3rem" }}>
                           <span className="spinner" style={{ width: "2rem", height: "2rem", color: "var(--accent-blue)" }} />
                           <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading records...</div>
                         </td>
                       </tr>
                     ) : usageRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={9} style={{ textAlign: "center", padding: "2.5rem", color: "var(--text-muted)" }}>
+                        <td colSpan={10} style={{ textAlign: "center", padding: "2.5rem", color: "var(--text-muted)" }}>
                           No usage records found matching the filter criteria.
                         </td>
                       </tr>
@@ -692,6 +745,15 @@ export default function SuperadminStaffBackofficePage() {
                             </td>
                             <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                               {r.request_ip || "Direct"}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <button
+                                onClick={() => handleInspectUsageLog(r)}
+                                className="btn btn-primary btn-sm"
+                                style={{ fontSize: "0.78rem", padding: "0.28rem 0.6rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                              >
+                                <span>👁️</span> View Details
+                              </button>
                             </td>
                           </tr>
                         );
@@ -787,14 +849,24 @@ export default function SuperadminStaffBackofficePage() {
                         <td><strong>{l.http_status_code || "--"}</strong></td>
                         <td>{l.latency_ms ? `${Math.round(l.latency_ms)}ms` : "--"}</td>
                         <td>
-                          {l.request_curl && (
+                          <div style={{ display: "inline-flex", gap: "0.35rem" }}>
                             <button
-                              onClick={() => { setSelectedLog(l); setCurlModalOpen(true); }}
-                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleInspectUsageLog(l)}
+                              className="btn btn-primary btn-sm"
+                              style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
                             >
-                              Inspect cURL 🔍
+                              👁️ View Details
                             </button>
-                          )}
+                            {l.request_curl && (
+                              <button
+                                onClick={() => { setSelectedLog(l); setCurlModalOpen(true); }}
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
+                              >
+                                cURL 🔍
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1052,6 +1124,17 @@ export default function SuperadminStaffBackofficePage() {
           </div>
         </div>
       )}
+
+      {/* Inspection Modal for Audit Log (Standard, Mobile-App, Timeline, Audit) */}
+      <TrackingInspectionModal
+        isOpen={inspectModalOpen}
+        onClose={() => setInspectModalOpen(false)}
+        logItem={inspectLog}
+        data={inspectData}
+        loading={inspectLoading}
+        activeView={inspectView}
+        setActiveView={setInspectView}
+      />
     </div>
   );
 }
