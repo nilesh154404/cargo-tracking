@@ -19,9 +19,12 @@ import {
   STORAGE_KEYS
 } from "@/lib/api";
 import TrackingInspectionModal from "@/components/TrackingInspectionModal";
+import { useToast } from "@/components/Toast";
 
 export default function TenantPortalPage() {
+  const showToast = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState(null);
   const [tenant, setTenant] = useState(null);
   const [usage, setUsage] = useState(null);
@@ -114,8 +117,38 @@ export default function TenantPortalPage() {
     }
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("cargo_sidebar_collapsed", String(next));
+      }
+      return next;
+    });
+  };
+
   useEffect(() => {
     loadPortalData();
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("cargo_sidebar_collapsed");
+      if (saved === "true") setSidebarCollapsed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleSidebar();
+      }
+      if (e.key === "Escape") {
+        setInspectModalOpen(false);
+        setKeyModalOpen(false);
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const loadPortalData = async () => {
@@ -194,7 +227,7 @@ export default function TenantPortalPage() {
 
   const handleExportUsageCSV = () => {
     if (!usageLogs.items || usageLogs.items.length === 0) {
-      alert("No usage records available to export.");
+      showToast("No usage records available to export.", "warning");
       return;
     }
     const headers = ["ID", "Timestamp (UTC)", "Tracking Identifier", "Transport Mode", "Carrier Code", "Carrier Name", "Provider Used", "Status", "Credits Consumed", "Request IP"];
@@ -279,7 +312,7 @@ export default function TenantPortalPage() {
   const handleBatchTrack = async () => {
     const lines = batchInput.split("\n").map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) {
-      alert("Please enter at least one tracking number.");
+      showToast("Please enter at least one tracking number.", "warning");
       return;
     }
 
@@ -299,11 +332,12 @@ export default function TenantPortalPage() {
 
       const res = await batchTrackShipments(items);
       setBatchResults(res);
+      showToast(`Batch completed: ${res.length} shipments processed.`, "success");
       // Refresh usage
       const u = await getTenantUsage();
       setUsage(u);
     } catch (err) {
-      alert(err.message || "Batch tracking failed.");
+      showToast(err.message || "Batch tracking failed.", "warning");
     } finally {
       setBatchLoading(false);
     }
@@ -320,8 +354,9 @@ export default function TenantPortalPage() {
       setNewKeyName("");
       const keys = await listApiKeys();
       setApiKeys(keys);
+      showToast("New API Key generated successfully!", "success");
     } catch (err) {
-      alert(err.message || "Failed to create API Key.");
+      showToast(err.message || "Failed to create API Key.", "warning");
     }
   };
 
@@ -331,8 +366,9 @@ export default function TenantPortalPage() {
       await revokeApiKey(keyId);
       const keys = await listApiKeys();
       setApiKeys(keys);
+      showToast("API key revoked.", "info");
     } catch (err) {
-      alert(err.message || "Failed to revoke key.");
+      showToast(err.message || "Failed to revoke key.", "warning");
     }
   };
 
@@ -341,10 +377,10 @@ export default function TenantPortalPage() {
     setUpgradeLoading(true);
     try {
       await upgradeSubscriptionPlan(tierCode);
-      alert(`Organization successfully upgraded to ${tierCode.toUpperCase()}!`);
+      showToast(`Organization successfully upgraded to ${tierCode.toUpperCase()}!`, "success");
       loadPortalData();
     } catch (err) {
-      alert(err.message || "Failed to upgrade plan.");
+      showToast(err.message || "Failed to upgrade plan.", "warning");
     } finally {
       setUpgradeLoading(false);
     }
@@ -442,28 +478,78 @@ export default function TenantPortalPage() {
       )}
 
       {/* Left Navigation Sidebar */}
-      <aside className={`app-sidebar ${mobileMenuOpen ? "open" : ""}`} style={{ width: "260px", background: "#ffffff", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.2rem", fontWeight: "800", color: "#0f172a" }}>
-              <span>⚡</span>
-              <span>CargoTrk<span style={{ color: "var(--accent-cyan)" }}>.io</span></span>
-            </Link>
-            <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Tenant: <strong>{tenant?.name || "My Organization"}</strong>
+      <aside
+        className={`app-sidebar app-sidebar-fixed ${sidebarCollapsed ? "collapsed" : ""} ${mobileMenuOpen ? "open" : ""}`}
+        style={{
+          width: sidebarCollapsed ? "76px" : "260px",
+          background: "#ffffff",
+          borderRight: "1px solid var(--border-subtle)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Sidebar Header */}
+        <div
+          style={{
+            padding: sidebarCollapsed ? "1rem 0.5rem" : "1.25rem 1.25rem",
+            borderBottom: "1px solid var(--border-subtle)",
+            display: "flex",
+            justifyContent: sidebarCollapsed ? "center" : "space-between",
+            alignItems: "center",
+            minHeight: "72px",
+          }}
+        >
+          {!sidebarCollapsed ? (
+            <>
+              <div>
+                <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.15rem", fontWeight: "800", color: "#0f172a" }}>
+                  <span>⚡</span>
+                  <span>CargoTrk<span style={{ color: "var(--accent-cyan)" }}>.io</span></span>
+                </Link>
+                <div className="sidebar-hide-on-collapse" style={{ marginTop: "0.35rem", fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                  Tenant: <strong title={tenant?.name}>{tenant?.name ? (tenant.name.length > 18 ? `${tenant.name.slice(0, 18)}...` : tenant.name) : "My Organization"}</strong>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                <button
+                  onClick={toggleSidebar}
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: "28px", height: "28px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem" }}
+                  title="Collapse sidebar (Cmd+B)"
+                  aria-label="Collapse sidebar"
+                >
+                  ◀
+                </button>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="mobile-menu-btn"
+                  style={{ width: "28px", height: "28px", fontSize: "0.85rem" }}
+                  title="Close menu"
+                >
+                  ✕
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+              <Link href="/" title="CargoTrk.io" style={{ fontSize: "1.4rem" }}>
+                ⚡
+              </Link>
+              <button
+                onClick={toggleSidebar}
+                className="btn btn-secondary btn-sm"
+                style={{ width: "28px", height: "28px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem" }}
+                title="Expand sidebar (Cmd+B)"
+                aria-label="Expand sidebar"
+              >
+                ▶
+              </button>
             </div>
-          </div>
-          <button
-            onClick={() => setMobileMenuOpen(false)}
-            className="mobile-menu-btn"
-            style={{ width: "32px", height: "32px", fontSize: "1rem" }}
-            title="Close menu"
-          >
-            ✕
-          </button>
+          )}
         </div>
 
-        <nav style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, overflowY: "auto" }}>
+        {/* Navigation Items */}
+        <nav style={{ padding: sidebarCollapsed ? "0.75rem 0.35rem" : "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, overflowY: "auto" }}>
           {[
             { id: "dashboard", label: "Overview Dashboard", icon: "📊" },
             { id: "tracker", label: "Live Cargo Tracker", icon: "🔍" },
@@ -481,11 +567,13 @@ export default function TenantPortalPage() {
                   handleLoadUsageLogs();
                 }
               }}
+              className="sidebar-nav-item"
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "0.75rem",
-                padding: "0.75rem 1rem",
+                gap: sidebarCollapsed ? "0" : "0.75rem",
+                justifyContent: sidebarCollapsed ? "center" : "flex-start",
+                padding: sidebarCollapsed ? "0.75rem 0.5rem" : "0.75rem 1rem",
                 borderRadius: "var(--radius-md)",
                 border: "none",
                 background: activeTab === item.id ? "#eff6ff" : "transparent",
@@ -494,22 +582,78 @@ export default function TenantPortalPage() {
                 fontSize: "0.9rem",
                 textAlign: "left",
                 cursor: "pointer",
-                transition: "all 0.15s ease"
+                transition: "all 0.15s ease",
+                position: "relative",
               }}
             >
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
+              <span style={{ fontSize: "1.1rem" }}>{item.icon}</span>
+              {!sidebarCollapsed && <span className="sidebar-label">{item.label}</span>}
+              {sidebarCollapsed && <span className="sidebar-tooltip">{item.label}</span>}
             </button>
           ))}
         </nav>
 
-        <div style={{ padding: "1.25rem", borderTop: "1px solid var(--border-subtle)" }}>
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-            Signed in as <strong>{user?.email}</strong>
-          </div>
-          <button onClick={handleSignOut} className="btn btn-secondary btn-sm" style={{ width: "100%" }}>
-            Sign Out
-          </button>
+        {/* Sidebar Footer */}
+        <div style={{ padding: sidebarCollapsed ? "0.75rem 0.35rem" : "1.25rem", borderTop: "1px solid var(--border-subtle)", textAlign: sidebarCollapsed ? "center" : "left" }}>
+          {!sidebarCollapsed ? (
+            <>
+              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.5rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                Signed in as <strong title={user?.email}>{user?.email}</strong>
+              </div>
+              <button onClick={handleSignOut} className="btn btn-secondary btn-sm" style={{ width: "100%" }}>
+                Sign Out
+              </button>
+              <div style={{ marginTop: "0.75rem", textAlign: "center" }}>
+                <button
+                  onClick={toggleSidebar}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "0.72rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                  }}
+                  title="Toggle sidebar width (Cmd+B)"
+                >
+                  <span>◀ Collapse Sidebar</span>
+                  <kbd style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: "3px", fontSize: "0.68rem" }}>⌘B</kbd>
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "50%",
+                  background: "#eff6ff",
+                  color: "var(--brand-primary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "700",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                }}
+                title={`Signed in as ${user?.email}`}
+              >
+                {(user?.email || "U")[0].toUpperCase()}
+              </div>
+              <button
+                onClick={handleSignOut}
+                className="btn btn-secondary btn-sm"
+                style={{ width: "32px", height: "32px", padding: 0, fontSize: "0.85rem" }}
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                🚪
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -658,7 +802,7 @@ export default function TenantPortalPage() {
                 </div>
 
                 <div className="table-wrapper" style={{ border: "none" }}>
-                  <table>
+                  <table className="sticky-table">
                     <thead>
                       <tr>
                         <th>Tracking Identifier</th>
@@ -1353,7 +1497,7 @@ export default function TenantPortalPage() {
 
                 {/* Table View */}
                 <div className="table-wrapper" style={{ border: "none" }}>
-                  <table>
+                  <table className="sticky-table">
                     <thead>
                       <tr>
                         <th>Date &amp; Time (UTC)</th>
@@ -1406,7 +1550,7 @@ export default function TenantPortalPage() {
                                   <button
                                     onClick={() => {
                                       navigator.clipboard.writeText(log.tracking_number);
-                                      alert(`Copied "${log.tracking_number}" to clipboard`);
+                                      showToast(`Copied "${log.tracking_number}" to clipboard`, "success");
                                     }}
                                     style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", opacity: 0.6 }}
                                     title="Copy tracking number"
@@ -1617,7 +1761,7 @@ export default function TenantPortalPage() {
                   </div>
 
                   <div className="table-wrapper" style={{ border: "none" }}>
-                    <table>
+                    <table className="sticky-table">
                       <thead>
                         <tr>
                           <th>Tracking Number</th>
@@ -1668,7 +1812,7 @@ export default function TenantPortalPage() {
                 </div>
 
                 <div className="table-wrapper">
-                  <table>
+                  <table className="sticky-table">
                     <thead>
                       <tr>
                         <th>Key Name</th>
@@ -1814,7 +1958,7 @@ export default function TenantPortalPage() {
                 </p>
                 <div className="secret-reveal-card">
                   <span>{newCreatedSecret}</span>
-                  <button onClick={() => { navigator.clipboard.writeText(newCreatedSecret); alert("API Key copied to clipboard!"); }} className="btn btn-secondary btn-sm">
+                  <button onClick={() => { navigator.clipboard.writeText(newCreatedSecret); showToast("API Key copied to clipboard!", "success"); }} className="btn btn-secondary btn-sm">
                     Copy
                   </button>
                 </div>

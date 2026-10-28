@@ -16,9 +16,12 @@ import {
   STORAGE_KEYS
 } from "@/lib/api";
 import TrackingInspectionModal from "@/components/TrackingInspectionModal";
+import { useToast } from "@/components/Toast";
 
 export default function SuperadminStaffBackofficePage() {
+  const showToast = useToast();
   const [activeTab, setActiveTab] = useState("tenants");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -91,8 +94,40 @@ export default function SuperadminStaffBackofficePage() {
     }
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("cargo_staff_sidebar_collapsed", String(next));
+      }
+      return next;
+    });
+  };
+
   useEffect(() => {
     checkStaffAuth();
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("cargo_staff_sidebar_collapsed");
+      if (saved === "true") setSidebarCollapsed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleSidebar();
+      }
+      if (e.key === "Escape") {
+        setInspectModalOpen(false);
+        setOnboardModalOpen(false);
+        setQuotaModalOpen(false);
+        setCurlModalOpen(false);
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const checkStaffAuth = async () => {
@@ -215,12 +250,12 @@ export default function SuperadminStaffBackofficePage() {
         is_active: tenantStatusActive,
       });
 
-      alert(`Quota updated for tenant '${selectedTenant.name}'!`);
+      showToast(`Quota updated for tenant '${selectedTenant.name}'!`, "success");
       setQuotaModalOpen(false);
       const updated = await listAdminTenants();
       setTenants(updated);
     } catch (err) {
-      alert(err.message || "Failed to update tenant quota.");
+      showToast(err.message || "Failed to update tenant quota.", "warning");
     } finally {
       setQuotaLoading(false);
     }
@@ -234,7 +269,7 @@ export default function SuperadminStaffBackofficePage() {
       localStorage.setItem(STORAGE_KEYS.TENANT, JSON.stringify({ slug: res.tenant_slug, name: res.tenant_name }));
       window.open("/portal", "_blank");
     } catch (err) {
-      alert(err.message || "Failed to impersonate tenant.");
+      showToast(err.message || "Failed to impersonate tenant.", "warning");
     }
   };
 
@@ -316,28 +351,78 @@ export default function SuperadminStaffBackofficePage() {
       )}
 
       {/* Sidebar */}
-      <aside className={`app-sidebar ${mobileMenuOpen ? "open" : ""}`} style={{ width: "260px", background: "#ffffff", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.2rem", fontWeight: "800", color: "#0f172a" }}>
-              <span>🛡️</span>
-              <span>CargoTrk <span style={{ color: "var(--accent-rose)", fontSize: "0.85rem" }}>STAFF</span></span>
+      <aside
+        className={`app-sidebar app-sidebar-fixed ${sidebarCollapsed ? "collapsed" : ""} ${mobileMenuOpen ? "open" : ""}`}
+        style={{
+          width: sidebarCollapsed ? "76px" : "260px",
+          background: "#ffffff",
+          borderRight: "1px solid var(--border-subtle)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Sidebar Header */}
+        <div
+          style={{
+            padding: sidebarCollapsed ? "1rem 0.5rem" : "1.25rem 1.25rem",
+            borderBottom: "1px solid var(--border-subtle)",
+            display: "flex",
+            justifyContent: sidebarCollapsed ? "center" : "space-between",
+            alignItems: "center",
+            minHeight: "72px",
+          }}
+        >
+          {!sidebarCollapsed ? (
+            <>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.15rem", fontWeight: "800", color: "#0f172a" }}>
+                  <span>🛡️</span>
+                  <span>CargoTrk <span style={{ color: "var(--accent-rose)", fontSize: "0.8rem" }}>STAFF</span></span>
+                </div>
+                <div className="sidebar-hide-on-collapse" style={{ marginTop: "0.35rem", fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                  Root Platform Administration
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                <button
+                  onClick={toggleSidebar}
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: "28px", height: "28px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem" }}
+                  title="Collapse sidebar (Cmd+B)"
+                  aria-label="Collapse sidebar"
+                >
+                  ◀
+                </button>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="mobile-menu-btn"
+                  style={{ width: "28px", height: "28px", fontSize: "0.85rem" }}
+                  title="Close menu"
+                >
+                  ✕
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+              <span title="CargoTrk Staff" style={{ fontSize: "1.4rem" }}>
+                🛡️
+              </span>
+              <button
+                onClick={toggleSidebar}
+                className="btn btn-secondary btn-sm"
+                style={{ width: "28px", height: "28px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem" }}
+                title="Expand sidebar (Cmd+B)"
+                aria-label="Expand sidebar"
+              >
+                ▶
+              </button>
             </div>
-            <div style={{ marginTop: "0.5rem", fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              Root Platform Administration
-            </div>
-          </div>
-          <button
-            onClick={() => setMobileMenuOpen(false)}
-            className="mobile-menu-btn"
-            style={{ width: "32px", height: "32px", fontSize: "1rem" }}
-            title="Close menu"
-          >
-            ✕
-          </button>
+          )}
         </div>
 
-        <nav style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, overflowY: "auto" }}>
+        {/* Navigation Items */}
+        <nav style={{ padding: sidebarCollapsed ? "0.75rem 0.35rem" : "1rem", display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, overflowY: "auto" }}>
           {[
             { id: "tenants", label: "Tenant Directory & Onboarding", icon: "🏢" },
             { id: "usagelogs", label: "Global Usage & Audit History", icon: "📜" },
@@ -353,11 +438,13 @@ export default function SuperadminStaffBackofficePage() {
                   handleLoadAdminUsageLogs();
                 }
               }}
+              className="sidebar-nav-item"
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "0.75rem",
-                padding: "0.75rem 1rem",
+                gap: sidebarCollapsed ? "0" : "0.75rem",
+                justifyContent: sidebarCollapsed ? "center" : "flex-start",
+                padding: sidebarCollapsed ? "0.75rem 0.5rem" : "0.75rem 1rem",
                 borderRadius: "var(--radius-md)",
                 border: "none",
                 background: activeTab === item.id ? "#eff6ff" : "transparent",
@@ -366,22 +453,78 @@ export default function SuperadminStaffBackofficePage() {
                 fontSize: "0.9rem",
                 textAlign: "left",
                 cursor: "pointer",
-                transition: "all 0.15s ease"
+                transition: "all 0.15s ease",
+                position: "relative",
               }}
             >
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
+              <span style={{ fontSize: "1.1rem" }}>{item.icon}</span>
+              {!sidebarCollapsed && <span className="sidebar-label">{item.label}</span>}
+              {sidebarCollapsed && <span className="sidebar-tooltip">{item.label}</span>}
             </button>
           ))}
         </nav>
 
-        <div style={{ padding: "1.25rem", borderTop: "1px solid var(--border-subtle)" }}>
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-            Superadmin Session Active
-          </div>
-          <button onClick={handleStaffLogout} className="btn btn-secondary btn-sm" style={{ width: "100%" }}>
-            Sign Out
-          </button>
+        {/* Sidebar Footer */}
+        <div style={{ padding: sidebarCollapsed ? "0.75rem 0.35rem" : "1.25rem", borderTop: "1px solid var(--border-subtle)", textAlign: sidebarCollapsed ? "center" : "left" }}>
+          {!sidebarCollapsed ? (
+            <>
+              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+                Superadmin Session Active
+              </div>
+              <button onClick={handleStaffLogout} className="btn btn-secondary btn-sm" style={{ width: "100%" }}>
+                Sign Out
+              </button>
+              <div style={{ marginTop: "0.75rem", textAlign: "center" }}>
+                <button
+                  onClick={toggleSidebar}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "0.72rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                  }}
+                  title="Toggle sidebar width (Cmd+B)"
+                >
+                  <span>◀ Collapse Sidebar</span>
+                  <kbd style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: "3px", fontSize: "0.68rem" }}>⌘B</kbd>
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "50%",
+                  background: "#fee2e2",
+                  color: "var(--accent-rose)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "700",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                }}
+                title="Superadmin Session Active"
+              >
+                SA
+              </div>
+              <button
+                onClick={handleStaffLogout}
+                className="btn btn-secondary btn-sm"
+                style={{ width: "32px", height: "32px", padding: 0, fontSize: "0.85rem" }}
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                🚪
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -485,7 +628,7 @@ export default function SuperadminStaffBackofficePage() {
               </div>
 
               <div className="table-wrapper" style={{ border: "none" }}>
-                <table>
+                <table className="sticky-table">
                   <thead>
                     <tr>
                       <th>Organization</th>
@@ -651,7 +794,7 @@ export default function SuperadminStaffBackofficePage() {
 
               {/* Table */}
               <div className="table-wrapper" style={{ border: "none" }}>
-                <table>
+                <table className="sticky-table">
                   <thead>
                     <tr>
                       <th>Timestamp (UTC)</th>
@@ -704,7 +847,7 @@ export default function SuperadminStaffBackofficePage() {
                                 <button
                                   onClick={() => {
                                     navigator.clipboard.writeText(r.tracking_number);
-                                    alert(`Copied "${r.tracking_number}" to clipboard`);
+                                    showToast(`Copied "${r.tracking_number}" to clipboard`, "success");
                                   }}
                                   style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.8rem", opacity: 0.6 }}
                                   title="Copy tracking number"
@@ -776,7 +919,7 @@ export default function SuperadminStaffBackofficePage() {
               </div>
 
               <div className="table-wrapper" style={{ border: "none" }}>
-                <table>
+                <table className="sticky-table">
                   <thead>
                     <tr>
                       <th>Carrier Code</th>
@@ -821,7 +964,7 @@ export default function SuperadminStaffBackofficePage() {
               </div>
 
               <div className="table-wrapper" style={{ border: "none" }}>
-                <table>
+                <table className="sticky-table">
                   <thead>
                     <tr>
                       <th>Timestamp</th>
@@ -1008,7 +1151,7 @@ export default function SuperadminStaffBackofficePage() {
                     onClick={() => {
                       const secret = onboardSuccessData.api_key?.secret_key || onboardSuccessData.api_key?.key;
                       if (secret) navigator.clipboard.writeText(secret);
-                      alert("API key copied to clipboard!");
+                      showToast("API key copied to clipboard!", "success");
                     }}
                     className="btn btn-secondary btn-sm"
                   >
@@ -1111,7 +1254,7 @@ export default function SuperadminStaffBackofficePage() {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(selectedLog.request_curl);
-                  alert("cURL command copied!");
+                  showToast("cURL command copied to clipboard!", "success");
                 }}
                 className="btn btn-primary"
               >

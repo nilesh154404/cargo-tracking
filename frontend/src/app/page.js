@@ -4,8 +4,10 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { loginUser, registerOrganization, STORAGE_KEYS } from "@/lib/api";
 import { CONTAINER_SAMPLES, getMockContainerTelemetry } from "@/lib/mockContainers";
+import { useToast } from "@/components/Toast";
 
 export default function MarketingHomePage() {
+  const showToast = useToast();
   // Container Mock Tracking state
   const [trackingNumber, setTrackingNumber] = useState("MSMU6484830");
   const [containerTelemetry, setContainerTelemetry] = useState(() => getMockContainerTelemetry("MSMU6484830"));
@@ -1118,7 +1120,7 @@ func main() {
                 <div className="secret-reveal-card">
                   <span>{newGeneratedKey}</span>
                   <button
-                    onClick={() => { navigator.clipboard.writeText(newGeneratedKey); alert("Copied API Key to clipboard!"); }}
+                    onClick={() => { navigator.clipboard.writeText(newGeneratedKey); showToast("Copied API Key to clipboard!", "success"); }}
                     className="btn btn-secondary btn-sm"
                   >
                     Copy

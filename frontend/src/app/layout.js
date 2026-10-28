@@ -1,4 +1,5 @@
 import "./globals.css";
+import { ToastProvider } from "@/components/Toast";
 
 export const metadata = {
   title: "CargoTrk | Universal Cargo Intelligence & Multi-Carrier Tracking API",
@@ -12,7 +13,11 @@ export default function RootLayout({ children }) {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </head>
-      <body>{children}</body>
+      <body>
+        <ToastProvider>
+          {children}
+        </ToastProvider>
+      </body>
     </html>
   );
 }
