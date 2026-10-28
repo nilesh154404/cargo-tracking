@@ -31,9 +31,11 @@ from app.providers.air.emirates_skycargo import EmiratesSkyCargoProvider
 from app.providers.sea.maersk import MaerskProvider
 from app.providers.sea.msc import MscProvider
 from app.providers.sea.ldb_container import LdbContainerProvider
+from app.providers.sea.one_line import OneLineProvider
 from app.providers.sea.generic_ocean import GenericOceanProvider
 
 _ldb_instance = LdbContainerProvider()
+_one_line_instance = OneLineProvider()
 
 _REGISTRY: Dict[str, BaseProvider] = {
     "cathay_cargo": CathayCargoProvider(),
@@ -67,7 +69,7 @@ _REGISTRY: Dict[str, BaseProvider] = {
     "maersk": MaerskProvider(),
     "msc": MscProvider(),
     "ldb_container": _ldb_instance,
-    "one_line": _ldb_instance,
+    "one_line": _one_line_instance,
     "generic_ocean": GenericOceanProvider(),
 }
 

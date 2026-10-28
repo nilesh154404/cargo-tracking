@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CargoTrk | Universal Cargo Intelligence & Multi-Carrier Tracking API</title>
+  <meta name="description"
+    content="Real-time multi-tenant cargo tracking API for 20+ air cargo carriers and all major ocean shipping lines. Metered enterprise subscription platform.">
+  <link rel="stylesheet" href="css/theme.css?v=20261027_02">
+  <link rel="stylesheet" href="css/website.css?v=20261027_02">
+</head>
+
+<body>
+
+  <!-- Top Sticky Navigation Bar -->
+  <header class="site-header">
+    <div class="container nav-container">
+      <a href="index.html" class="brand-logo">
+        <div class="brand-icon">⚡</div>
+        <span>CargoTrk<span style="color:var(--accent-cyan);">.io</span></span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="#sandbox" class="nav-link">Live Tracker</a></li>
+        <li><a href="#network" class="nav-link">Carrier Network</a></li>
+        <li><a href="#docs" class="nav-link">API Quickstart</a></li>
+        <li><a href="#pricing" class="nav-link">Pricing & Quota</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <button class="btn btn-secondary btn-sm" data-open-modal="login">Sign In</button>
+        <button class="btn btn-primary btn-sm" data-open-modal="register">Get API Key</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section with Interactive Sandbox -->
+  <section class="hero-section" id="sandbox">
+    <div class="container">
+      <div class="hero-badge">
+        <span class="badge badge-air">AIR CARGO</span> &nbsp;
+        <span class="badge badge-sea">OCEAN CONTAINER</span> &nbsp;
+        <span class="badge badge-success">ENTERPRISE MULTI-TENANT</span>
+      </div>
+
+      <h1 class="hero-title">
+        The Universal Cargo Intelligence &amp; <span class="gradient-text">Multi-Carrier Tracking</span> API
+      </h1>
+
+      <p class="hero-subtitle">
+        Connect to 20+ air cargo carriers and all major ocean shipping lines through one unified, metered API with
+        automated fallback orchestration and sub-second responses.
+      </p>
+
+      <!-- Live Tracking Interactive Sandbox -->
+      <div class="tracker-card">
+        <div class="tracker-input-group">
+          <div class="tracker-input-wrapper">
+            <span class="tracker-icon">🔍</span>
+            <input type="text" id="heroTrackInput" class="tracker-input"
+              placeholder="Enter AWB (e.g. 160-15246221) or Container (e.g. MSMU6484830)..." autocomplete="off">
+          </div>
+          <button id="heroTrackBtn" class="btn btn-primary btn-lg">
+            Track Cargo
+          </button>
+        </div>
+
+        <!-- Quick 1-Click Sample Pills -->
+        <div class="sample-pills">
+          <span class="sample-label">Try Live Samples:</span>
+          <button class="pill-btn" data-number="MSMU6484830">
+            <span>🚢 MSC:</span> <strong>MSMU6484830</strong>
+          </button>
+          <button class="pill-btn" data-number="MEDU9650838">
+            <span>🚢 MSC:</span> <strong>MEDU9650838</strong>
+          </button>
+          <button class="pill-btn" data-number="160-15246221">
+            <span>✈️ Cathay:</span> <strong>160-15246221</strong>
+          </button>
+          <button class="pill-btn" data-number="MAEU1234567">
+            <span>🚢 Maersk:</span> <strong>MAEU1234567</strong>
+          </button>
+        </div>
+
+        <!-- Real-Time Tracking Response Box -->
+        <div id="trackResultBox" class="tracking-result-box">
+
+          <!-- Shipment Header -->
+          <div class="shipment-overview-header">
+            <div class="shipment-id-group">
+              <span id="resModeBadge" class="badge badge-sea">SEA</span>
+              <span id="resTrackingNumber" class="tracking-id-text">MSMU6484830</span>
+              <span id="resCarrierName" class="carrier-name-badge">Mediterranean Shipping Co</span>
+            </div>
+            <div>
+              <span id="resStatusBadge" class="badge badge-warning">IN TRANSIT</span>
+            </div>
+          </div>
+
+          <!-- Visual Milestone Journey Bar -->
+          <div class="journey-bar-container">
+            <div class="journey-steps">
+              <div class="journey-step-connector" id="journeyConnector" style="width: 50%;"></div>
+
+              <div class="journey-step completed" id="step-BOOKED">
+                <div class="step-dot">✓</div>
+                <div class="step-title">Booked</div>
+              </div>
+
+              <div class="journey-step completed" id="step-GATE_IN">
+                <div class="step-dot">✓</div>
+                <div class="step-title">Gate In</div>
+              </div>
+
+              <div class="journey-step active" id="step-IN_TRANSIT">
+                <div class="step-dot">🚢</div>
+                <div class="step-title">In Transit</div>
+              </div>
+
+              <div class="journey-step" id="step-PORT_ARRIVED">
+                <div class="step-dot">⚓</div>
+                <div class="step-title">Port Arrived</div>
+              </div>
+
+              <div class="journey-step" id="step-CUSTOMS">
+                <div class="step-dot">🏛️</div>
+                <div class="step-title">Customs</div>
+              </div>
+
+              <div class="journey-step" id="step-DELIVERED">
+                <div class="step-dot">📦</div>
+                <div class="step-title">Delivered</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Descending Milestones Timeline (Newest First) -->
+          <div class="timeline-header">
+            <h3 class="timeline-title">
+              <span>🕒</span> Chronological Milestones (Descending Order)
+            </h3>
+            <span class="badge badge-tier">Live Telemetry</span>
+          </div>
+
+          <div id="resTimelineList" class="timeline-list">
+            <!-- Dynamic descending milestones injected here -->
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Carrier Network Coverage Grid -->
+  <section class="network-section" id="network">
+    <div class="container">
+      <div class="section-header">
+        <span class="badge badge-air" style="margin-bottom:0.75rem;">Global Connectivity</span>
+        <h2 class="section-title">Unified Carrier Infrastructure</h2>
+        <p class="section-desc">
+          Direct integrations with automated fallback routing across 20+ commercial cargo airlines and global ocean
+          shipping alliances.
+        </p>
+      </div>
+
+      <div class="carrier-grid">
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">🚢</div>
+          <div class="carrier-title">MSC</div>
+          <div class="carrier-prefix-tag">MSMU, MEDU, MSCU</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">🚢</div>
+          <div class="carrier-title">Maersk Line</div>
+          <div class="carrier-prefix-tag">MAEU, MRKU, MRSU</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">🚢</div>
+          <div class="carrier-title">CMA CGM</div>
+          <div class="carrier-prefix-tag">CMAU, CGMU</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">🚢</div>
+          <div class="carrier-title">Hapag-Lloyd</div>
+          <div class="carrier-prefix-tag">HLCU, SUDU</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">🚢</div>
+          <div class="carrier-title">ONE (Ocean Network)</div>
+          <div class="carrier-prefix-tag">ONEU, NYKU, KKFU</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">🚢</div>
+          <div class="carrier-title">Evergreen Line</div>
+          <div class="carrier-prefix-tag">EGLV, EMCU, EGSU</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">✈️</div>
+          <div class="carrier-title">Cathay Pacific Cargo</div>
+          <div class="carrier-prefix-tag">AWB Prefix: 160</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">✈️</div>
+          <div class="carrier-title">Emirates SkyCargo</div>
+          <div class="carrier-prefix-tag">AWB Prefix: 176</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">✈️</div>
+          <div class="carrier-title">Lufthansa Cargo</div>
+          <div class="carrier-prefix-tag">AWB Prefix: 020</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">✈️</div>
+          <div class="carrier-title">Singapore Airlines</div>
+          <div class="carrier-prefix-tag">AWB Prefix: 618</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">✈️</div>
+          <div class="carrier-title">Qatar Airways Cargo</div>
+          <div class="carrier-prefix-tag">AWB Prefix: 157</div>
+        </div>
+        <div class="carrier-card">
+          <div class="carrier-icon-circle">✈️</div>
+          <div class="carrier-title">Japan Airlines (JAL)</div>
+          <div class="carrier-prefix-tag">AWB Prefix: 131</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Developer API Quickstart -->
+  <section class="docs-section" id="docs">
+    <div class="container docs-layout">
+      <div>
+        <span class="badge badge-tier" style="margin-bottom:0.75rem;">Developer First</span>
+        <h2 class="section-title">Integrate Live Tracking in Under 5 Minutes</h2>
+        <p class="section-desc" style="margin-bottom: 2rem;">
+          Authenticate with a simple API key. Send any container or AWB identifier and receive normalized JSON with
+          timestamped milestones, vessel voyage, and delivery states.
+        </p>
+
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span style="color:var(--accent-cyan); font-weight:700;">✓</span>
+            <span style="font-size:0.9rem; color:var(--text-secondary);">Automated carrier prefix detection (no manual
+              code selection required)</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span style="color:var(--accent-cyan); font-weight:700;">✓</span>
+            <span style="font-size:0.9rem; color:var(--text-secondary);">Real-time fallback to secondary provider if
+              carrier portal challenges</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span style="color:var(--accent-cyan); font-weight:700;">✓</span>
+            <span style="font-size:0.9rem; color:var(--text-secondary);">Batch tracking endpoint for high-volume
+              manifest ingestion</span>
+          </div>
+        </div>
+
+        <div style="margin-top:2.5rem;">
+          <a href="/docs" target="_blank" class="btn btn-outline">
+            Interactive Swagger Docs ➔
+          </a>
+        </div>
+      </div>
+
+      <!-- Code Viewer Window -->
+      <div class="code-viewer">
+        <div class="code-header">
+          <div class="code-tabs">
+            <button class="code-tab active" data-lang="curl">cURL</button>
+            <button class="code-tab" data-lang="python">Python</button>
+            <button class="code-tab" data-lang="javascript">Node.js</button>
+            <button class="code-tab" data-lang="go">Go</button>
+          </div>
+          <button id="copyCodeBtn" class="btn btn-secondary btn-sm" style="padding:0.25rem 0.6rem; font-size:0.75rem;">
+            Copy
+          </button>
+        </div>
+        <pre class="code-body" id="codeBody">curl -X POST "http://localhost:8000/api/v1/track" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: cargotrk_live_your_api_key_here" \
+  -d '{
+    "tracking_number": "MSMU6484830",
+    "customer_reference": "PO-9842"
+  }'</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing & Subscription Tiers -->
+  <section class="pricing-section" id="pricing">
+    <div class="container">
+      <div class="section-header">
+        <span class="badge badge-success" style="margin-bottom:0.75rem;">Transparent Metered Pricing</span>
+        <h2 class="section-title">Scale From Prototype to Global Enterprise</h2>
+        <p class="section-desc">
+          Choose a tier that matches your shipment tracking volume. Instant upgrades and zero overage lock-in.
+        </p>
+
+        <!-- Interactive Volume Estimator Slider -->
+        <div class="glass-panel" style="max-width:540px; margin: 2rem auto 0; padding:1.5rem;">
+          <div
+            style="display:flex; justify-content:space-between; margin-bottom:0.75rem; font-size:0.9rem; font-weight:600;">
+            <span>Estimated Monthly Shipments:</span>
+            <span id="volumeValue"
+              style="color:var(--accent-cyan); font-family:var(--font-mono); font-size:1.1rem;">2,500</span>
+          </div>
+          <input type="range" id="volumeSlider" min="50" max="50000" step="50" value="2500"
+            style="width:100%; accent-color:var(--accent-cyan); cursor:pointer;">
+          <div
+            style="display:flex; justify-content:space-between; margin-top:0.75rem; font-size:0.85rem; color:var(--text-secondary);">
+            <span>Recommended: <strong id="recTierBadge" style="color:var(--text-main);">Growth Plan</strong></span>
+            <span>Est: <strong id="estCostValue" style="color:var(--accent-cyan);">$199/mo</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pricing-grid">
+        <!-- Developer -->
+        <div class="pricing-card">
+          <div class="plan-name">Developer</div>
+          <div style="color:var(--text-muted); font-size:0.85rem;">For sandbox testing &amp; staging apps</div>
+          <div class="plan-price-wrap">
+            <span class="plan-price">$0</span>
+            <span class="plan-period">/ month</span>
+          </div>
+          <ul class="plan-features">
+            <li class="feature-item">✓ 100 tracks / month</li>
+            <li class="feature-item">✓ 10 Requests Per Minute</li>
+            <li class="feature-item">✓ 2 Production API Keys</li>
+            <li class="feature-item">✓ Air &amp; Ocean Single Tracking</li>
+          </ul>
+          <button class="btn btn-secondary" data-open-modal="register">Get Started Free</button>
+        </div>
+
+        <!-- Growth -->
+        <div class="pricing-card featured">
+          <span class="badge badge-success pricing-plan-badge">MOST POPULAR</span>
+          <div class="plan-name">Growth</div>
+          <div style="color:var(--text-muted); font-size:0.85rem;">For growing freight forwarders &amp; apps</div>
+          <div class="plan-price-wrap">
+            <span class="plan-price">$199</span>
+            <span class="plan-period">/ month</span>
+          </div>
+          <ul class="plan-features">
+            <li class="feature-item">✓ 2,500 tracks / month</li>
+            <li class="feature-item">✓ 60 Requests Per Minute</li>
+            <li class="feature-item">✓ 10 API Keys</li>
+            <li class="feature-item">✓ Batch Tracking CSV Ingestion</li>
+            <li class="feature-item">✓ Webhook Delivery Alerts</li>
+          </ul>
+          <button class="btn btn-primary" data-open-modal="register">Start Growth Plan</button>
+        </div>
+
+        <!-- Business -->
+        <div class="pricing-card">
+          <div class="plan-name">Business</div>
+          <div style="color:var(--text-muted); font-size:0.85rem;">For enterprise TMS &amp; supply chains</div>
+          <div class="plan-price-wrap">
+            <span class="plan-price">$699</span>
+            <span class="plan-period">/ month</span>
+          </div>
+          <ul class="plan-features">
+            <li class="feature-item">✓ 15,000 tracks / month</li>
+            <li class="feature-item">✓ 300 Requests Per Minute</li>
+            <li class="feature-item">✓ 25 API Keys</li>
+            <li class="feature-item">✓ Priority Automated Fallback</li>
+            <li class="feature-item">✓ Team RBAC (Admins/Operators)</li>
+          </ul>
+          <button class="btn btn-secondary" data-open-modal="register">Start Business Plan</button>
+        </div>
+
+        <!-- Enterprise -->
+        <div class="pricing-card">
+          <div class="plan-name">Enterprise</div>
+          <div style="color:var(--text-muted); font-size:0.85rem;">Custom high-throughput logistics</div>
+          <div class="plan-price-wrap">
+            <span class="plan-price">$2,499</span>
+            <span class="plan-period">/ month</span>
+          </div>
+          <ul class="plan-features">
+            <li class="feature-item">✓ 1,000,000+ tracks / month</li>
+            <li class="feature-item">✓ 1,200 Requests Per Minute</li>
+            <li class="feature-item">✓ Unlimited API Keys</li>
+            <li class="feature-item">✓ Dedicated SLA &amp; Support</li>
+            <li class="feature-item">✓ Custom Carrier Vault</li>
+          </ul>
+          <button class="btn btn-outline" data-open-modal="register">Contact Enterprise</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <div>© 2026 CargoTrk Inc. All rights reserved. Universal Cargo Intelligence Platform.</div>
+        <div style="display:flex; gap:1.5rem;">
+          <a href="portal.html" style="color:var(--accent-cyan); text-decoration:none;">Customer Portal</a>
+          <a href="staff.html" style="color:var(--accent-rose); text-decoration:none;">Staff Backoffice</a>
+          <a href="/docs" target="_blank" style="color:var(--text-muted); text-decoration:none;">API Docs</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Login Modal Dialog -->
+  <div class="modal-backdrop" id="loginModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><span>🔐</span> Sign In to Cargo Intelligence</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <form id="loginForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="loginEmail" class="form-input" placeholder="admin@apexlogistics.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="loginPassword" class="form-input" placeholder="••••••••••••" required>
+          </div>
+          <div class="form-group" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+            <input type="checkbox" id="loginAsStaffCheck" style="accent-color:var(--accent-cyan);">
+            <label for="loginAsStaffCheck" style="font-size:0.85rem; color:var(--text-secondary); cursor:pointer;">
+              Sign in to <strong>Superadmin &amp; Staff Backoffice</strong>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+          <button type="submit" class="btn btn-primary">Sign In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Register Organization Modal Dialog -->
+  <div class="modal-backdrop" id="registerModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><span>⚡</span> Onboard Enterprise Organization</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <form id="registerForm">
+          <div id="regFormFields">
+            <div class="form-group">
+              <label class="form-label">Organization Name</label>
+              <input type="text" id="regOrgName" class="form-input" placeholder="Apex Global Logistics" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tenant Slug (Identifier)</label>
+              <input type="text" id="regOrgSlug" class="form-input" placeholder="apex-global" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Admin Email</label>
+              <input type="email" id="regEmail" class="form-input" placeholder="ops@apexlogistics.com" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="password" id="regPassword" class="form-input" placeholder="••••••••••••" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Subscription Tier</label>
+              <select id="regTier" class="form-select">
+                <option value="developer">Developer Plan (100 free tracks/mo)</option>
+                <option value="growth" selected>Growth Plan ($199/mo - 2,500 tracks)</option>
+                <option value="business">Business Plan ($699/mo - 15,000 tracks)</option>
+                <option value="enterprise">Enterprise Plan ($2,499/mo - 1M tracks)</option>
+              </select>
+            </div>
+            <div class="modal-footer" style="padding-left:0; padding-right:0; margin-bottom:-1rem;">
+              <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+              <button type="submit" class="btn btn-primary">Create Organization &amp; Get Key</button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Success Reveal Box (Shown after API Key Generation) -->
+        <div id="regSuccessBox" style="display:none; text-align:center; padding:1rem 0;">
+          <div style="font-size:2.5rem; margin-bottom:0.75rem;">🎉</div>
+          <h4 style="font-size:1.25rem; font-weight:800; color:var(--text-main); margin-bottom:0.5rem;">Organization
+            Ready!</h4>
+          <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:1.5rem;">
+            Your production API Key has been generated. Store it securely; this secret cannot be viewed again.
+          </p>
+
+          <div class="key-secret-reveal" id="newApiKeyDisplay">
+            cargotrk_live_...
+          </div>
+
+          <div style="margin-top:1.5rem; display:flex; justify-content:center; gap:0.75rem;">
+            <a href="portal.html" class="btn btn-primary">Launch Customer Portal ➔</a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/config.js?v=20261027_02"></script>
+  <script src="js/api.js?v=20261027_02"></script>
+  <script src="js/auth.js?v=20261027_02"></script>
+  <script src="js/website.js?v=20261027_02"></script>
+</body>
+
+</html>

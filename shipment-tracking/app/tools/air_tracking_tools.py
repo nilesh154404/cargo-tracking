@@ -1,3 +1,4 @@
+import inspect
 from typing import Optional
 from app.providers import get_provider
 from app.providers.base import ProviderResult
@@ -18,6 +19,7 @@ class AirTrackingTool:
         tracking_number: str,
         language: str = "en-us",
         force_refresh: bool = False,
+        **kwargs,
     ) -> ProviderResult:
         provider = get_provider(provider_name)
         if not provider:
@@ -28,10 +30,15 @@ class AirTrackingTool:
                 error=f"Provider '{provider_name}' not registered in system.",
             )
 
+        sig = inspect.signature(provider.track)
+        has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        call_kwargs = kwargs if has_var_keyword else {k: v for k, v in kwargs.items() if k in sig.parameters}
+
         return await provider.track(
             prefix=prefix,
             serial=serial,
             tracking_number=tracking_number,
             language=language,
             force_refresh=force_refresh,
+            **call_kwargs,
         )

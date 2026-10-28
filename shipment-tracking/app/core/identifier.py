@@ -203,20 +203,38 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
     "MAEU": {
         "carrier_code": "MSK",
         "name": "Maersk Line",
-        "primary_provider": "ldb_container",
-        "fallback_providers": "generic_ocean",
+        "primary_provider": "maersk",
+        "fallback_providers": "ldb_container,generic_ocean",
     },
     "MRSU": {
         "carrier_code": "MSK",
         "name": "Maersk Line",
-        "primary_provider": "ldb_container",
-        "fallback_providers": "generic_ocean",
+        "primary_provider": "maersk",
+        "fallback_providers": "ldb_container,generic_ocean",
     },
     "MSKU": {
         "carrier_code": "MSK",
         "name": "Maersk Line",
-        "primary_provider": "ldb_container",
-        "fallback_providers": "generic_ocean",
+        "primary_provider": "maersk",
+        "fallback_providers": "ldb_container,generic_ocean",
+    },
+    "MRKU": {
+        "carrier_code": "MSK",
+        "name": "Maersk Line",
+        "primary_provider": "maersk",
+        "fallback_providers": "ldb_container,generic_ocean",
+    },
+    "HASU": {
+        "carrier_code": "MSK",
+        "name": "Hamburg Süd / Maersk Line",
+        "primary_provider": "maersk",
+        "fallback_providers": "ldb_container,generic_ocean",
+    },
+    "SUDU": {
+        "carrier_code": "MSK",
+        "name": "Hamburg Süd / Maersk Line",
+        "primary_provider": "maersk",
+        "fallback_providers": "ldb_container,generic_ocean",
     },
     "MSCU": {
         "carrier_code": "MSC",
@@ -231,6 +249,18 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
         "fallback_providers": "generic_ocean",
     },
     "MEDU": {
+        "carrier_code": "MSC",
+        "name": "Mediterranean Shipping Company",
+        "primary_provider": "msc",
+        "fallback_providers": "generic_ocean",
+    },
+    "MSDU": {
+        "carrier_code": "MSC",
+        "name": "Mediterranean Shipping Company",
+        "primary_provider": "msc",
+        "fallback_providers": "generic_ocean",
+    },
+    "MSNU": {
         "carrier_code": "MSC",
         "name": "Mediterranean Shipping Company",
         "primary_provider": "msc",
@@ -251,20 +281,48 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
     "ONEU": {
         "carrier_code": "ONE",
         "name": "Ocean Network Express (ONE)",
-        "primary_provider": "ldb_container",
-        "fallback_providers": "generic_ocean",
+        "primary_provider": "one_line",
+        "fallback_providers": "ldb_container,generic_ocean",
     },
     "ONEY": {
         "carrier_code": "ONE",
         "name": "Ocean Network Express (ONE)",
-        "primary_provider": "ldb_container",
-        "fallback_providers": "generic_ocean",
+        "primary_provider": "one_line",
+        "fallback_providers": "ldb_container,generic_ocean",
     },
 }
 
 
-LIVE_SUPPORTED_AIR_PROVIDERS = {"cathay_cargo", "singapore_airlines", "jal_cargo", "indigo_cargo", "air_india_cargo", "srilankan_cargo", "flydubai_cargo", "turkish_cargo", "lufthansa_cargo", "royal_brunei_cargo", "ups_air_cargo", "ethiopian_cargo", "thai_cargo", "qatar_cargo", "dhl_aviation_cargo", "etihad_cargo", "kuwait_airways", "air_asia", "azul_cargo", "aeroflot_cargo", "afcom_cargo", "silk_way_west_cargo", "iag_cargo", "champ_cargo", "maskargo", "virgin_atlantic_cargo", "emirates_skycargo"}
-LIVE_SUPPORTED_SEA_PROVIDERS = {"msc", "ldb_container", "one_line"}
+LIVE_SUPPORTED_AIR_PROVIDERS = {
+    "cathay_cargo",
+    "singapore_airlines",
+    "jal_cargo",
+    "indigo_cargo",
+    "air_india_cargo",
+    "srilankan_cargo",
+    "flydubai_cargo",
+    "turkish_cargo",
+    "lufthansa_cargo",
+    "royal_brunei_cargo",
+    "ups_air_cargo",
+    "ethiopian_cargo",
+    "thai_cargo",
+    "qatar_cargo",
+    "dhl_aviation_cargo",
+    "etihad_cargo",
+    "kuwait_airways",
+    "air_asia",
+    "azul_cargo",
+    "aeroflot_cargo",
+    "afcom_cargo",
+    "silk_way_west_cargo",
+    "iag_cargo",
+    "champ_cargo",
+    "maskargo",
+    "virgin_atlantic_cargo",
+    "emirates_skycargo",
+}
+LIVE_SUPPORTED_SEA_PROVIDERS = {"msc", "ldb_container", "one_line", "maersk"}
 
 
 class IdentificationResult:
@@ -331,6 +389,7 @@ def parse_and_identify(
     raw_query: str,
     explicit_mode: Optional[str] = None,
     db: Optional[Session] = None,
+    carrier_code_override: Optional[str] = None,
 ) -> IdentificationResult:
     cleaned = raw_query.strip().upper()
     digits_only = re.sub(r"\D", "", cleaned)
@@ -340,6 +399,30 @@ def parse_and_identify(
         digits_only = "131" + digits_only[4:]
     if cleaned.startswith("1331-"):
         cleaned = "131-" + cleaned[5:]
+
+    # 0. Ocean Network Express (ONE) identification (containers, bookings, or carrier code override)
+    is_one_carrier = (
+        (carrier_code_override and carrier_code_override.strip().upper() in ("ONE", "ONEY"))
+        or cleaned.startswith("ONEY")
+        or cleaned.startswith("ONEU")
+        or (cleaned.startswith("BLRG") and len(cleaned) >= 8)
+    )
+    if is_one_carrier:
+        prefix = "ONEU" if cleaned.startswith("ONEU") else "ONEY"
+        serial = cleaned[4:] if (cleaned.startswith("ONEU") or cleaned.startswith("ONEY")) else cleaned
+        return IdentificationResult(
+            mode="SEA",
+            clean_tracking_number=cleaned,
+            carrier_code="ONE",
+            carrier_name="Ocean Network Express (ONE)",
+            prefix=prefix,
+            serial_number=serial,
+            primary_provider="one_line",
+            fallback_providers=["ldb_container", "generic_ocean"],
+            is_valid_format=True,
+            is_supported=True,
+            relatable_message=None,
+        )
 
     # 1. SEA Container detection: Standard ISO 6346 container (4 alpha + 7 digits, e.g. MSMU6484830)
     container_match = re.match(r"^([A-Z]{4})(\d{7})$", cleaned)

@@ -21,6 +21,23 @@ class Settings(BaseSettings):
     FALLBACK_SQLITE_URL: str = "sqlite:///./shipment_tracking.db"
     AUTO_FALLBACK_SQLITE: bool = True
 
+    # Security & Multi-Tenancy Settings
+    JWT_SECRET_KEY: str = "cargotrk_super_secret_jwt_key_2026_enterprise_production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    API_KEY_LIVE_PREFIX: str = "cargotrk_live_"
+    API_KEY_TEST_PREFIX: str = "cargotrk_test_"
+
+    ALLOW_ANONYMOUS_TRACKING: bool = False  # Strictly require authenticated API Key or User session
+    DEFAULT_TENANT_SLUG: str = "default-org"
+    DEFAULT_TENANT_NAME: str = "Default Enterprise Logistics"
+
+    # Swagger & OpenAPI Documentation Authentication
+    DOCS_USERNAME: str = os.getenv("DOCS_USERNAME", "nilesh")
+    DOCS_PASSWORD: str = os.getenv("DOCS_PASSWORD", "nilesh@2026")
+
     @property
     def get_database_url(self) -> str:
         if self.DATABASE_URL:

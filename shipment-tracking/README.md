@@ -1,6 +1,6 @@
-# Shipment Tracking Platform (Air & Sea)
+# Enterprise Multi-Tenant Cargo Tracking Platform (Air & Sea)
 
-An Agentic, multi-provider shipment tracking backend for **Air Cargo** and **Ocean Shipping**.
+A production-grade, multi-tenant, subscription-managed cargo tracking SaaS platform modeled after modern AI developer API platforms (OpenAI / Stripe style).
 
 ---
 
@@ -8,10 +8,16 @@ An Agentic, multi-provider shipment tracking backend for **Air Cargo** and **Oce
 
 ```mermaid
 flowchart TD
-    Client([Client Request: e.g. 16015246221 or MAEU1234567]) --> API[FastAPI Gateway]
-    API --> MasterAgent[Tracking Orchestrator Agent]
+    Client([Client Request: Web, Mobile, ERP, TMS]) --> Ingress[FastAPI Gateway]
     
+    subgraph Security & Access Layer
+        Ingress --> AuthEngine[Dual Auth & Scope Enforcer]
+        AuthEngine --> RateLimiter[Token Bucket Rate Limiter]
+        RateLimiter --> QuotaGuard[Monthly Quota & Credit Metering]
+    end
+
     subgraph Agentic Reasoning Layer
+        QuotaGuard --> MasterAgent[Tracking Orchestrator Agent]
         MasterAgent --> RoutingAgent[Routing & Identification Agent]
         RoutingAgent --> CarrierTool[Carrier Identification Tool]
         CarrierTool --> Plan[Execution Plan: Primary Provider + Fallbacks]
@@ -21,187 +27,101 @@ flowchart TD
         MasterAgent --> AirTool[Air Tracking Tool]
         MasterAgent --> SeaTool[Sea Tracking Tool]
         
-        AirTool --> ProviderCathay[Cathay Cargo Provider live]
-        AirTool -.->|On Failure| ProviderEK[Emirates Provider fallback]
+        AirTool --> ProviderAir[Air Providers: Cathay, Emirates, JAL, etc.]
         AirTool -.->|On Failure| ProviderAirGeneric[Generic Air Fallback]
         
-        SeaTool --> ProviderMaersk[Maersk Provider]
+        SeaTool --> ProviderSea[Sea Providers: MSC, Maersk, ONE, etc.]
         SeaTool -.->|On Failure| ProviderSeaGeneric[Generic Ocean Fallback]
     end
 
-    subgraph Data & Persistence Layer
+    subgraph Multi-Tenant Persistence Layer
         MasterAgent --> DBTool[Database Persistence Tool]
-        DBTool --> MySQL[(MySQL Database / Fallback SQLite)]
-        DBTool --> Records[Shipments, Events, Provider Execution Logs]
+        DBTool --> Isolation[Tenant Scoped Data Filtering]
+        Isolation --> MySQL[(MySQL Database / Fallback SQLite)]
+        Isolation --> Records[Tenants, Users, API Keys, Shipments, Usage Records]
     end
 
-    MasterAgent --> Response([Unified Standardized Response])
+    MasterAgent --> Response([Unified Standardized Response: Descending Milestones])
 ```
 
 ---
 
-## Key Features
+## Key Enterprise Features
 
-1. **Intelligent Identification Agent (`RoutingAgent`)**:
-   - Takes raw query strings like `16015246221`, `160-15246221`, or container numbers like `MAEU1234567`.
-   - Recognizes IATA 3-digit prefixes (`160` = Cathay Pacific Cargo, `176` = Emirates, etc.) and ISO 6346 container formats.
-   - Generates an ordered provider execution plan with primary and fallback options.
+1. **Subscription-Managed Quotas (Developer Platform Model)**:
+   - **Developer (Free)**: 100 tracking credits/mo, 10 RPM, 2 API keys.
+   - **Growth ($199/mo)**: 2,500 tracking credits/mo, 60 RPM, 10 API keys, batch tracking.
+   - **Business ($699/mo)**: 15,000 tracking credits/mo, 300 RPM, 25 API keys, priority routing.
+   - **Enterprise ($2,499/mo)**: 1,000,000+ tracking credits/mo, 1,200 RPM, custom carrier credentials, SLA.
 
-2. **Adaptive Fallback & Retry (`TrackingOrchestratorAgent`)**:
-   - Attempts primary provider first.
-   - If the provider fails, times out, or encounters errors, the agent records the attempt and switches immediately to the configured fallback provider.
-   - Logs every attempt, HTTP status code, error, and latency for observability.
+2. **API Key-First Security (`cargotrk_live_...`)**:
+   - Single-reveal plaintext key generation with SHA-256 database hashing.
+   - Dual authentication: B2B machine-to-machine via `X-API-Key` or `Authorization: Bearer cargotrk_live_...`, and human dashboard sessions via JWT.
+   - Fine-grained scopes: `tracking:live`, `tracking:read`, `shipments:batch`, `webhooks:write`, `admin:manage`.
 
-3. **Multi-Carrier & Multi-Mode Support**:
-   - **Air Cargo**: Cathay Pacific Cargo (`160`), Emirates SkyCargo (`176`), Singapore Airlines (`618`), Lufthansa (`020`), Universal Air Fallback.
-   - **Ocean Shipping**: Maersk Line (`MAEU`), MSC (`MSCU`), Universal Ocean Container Fallback.
+3. **Multi-Tenant Data Isolation**:
+   - Every shipment, tracking event, execution log, and usage record is strictly partitioned by `tenant_id`.
+   - Tenants only access and monitor their own cargo portfolios.
 
-4. **MySQL Database Integration**:
-   - Stores tracking history, latest shipment statuses, chronological tracking events, and provider execution logs.
-   - Automatic fallback to SQLite if MySQL is not yet reachable during local development.
+4. **Real-Time Metering & Quota Enforcer**:
+   - Live tracking consumes 1 credit per request; cached reads are free.
+   - Returns standard HTTP `429 Too Many Requests` with reset date and upgrade prompt when quota is reached.
 
----
-
-## Directory Structure
-
-```
-shipment-tracking/
-├── README.md
-├── requirements.txt
-├── docker-compose.yml         # MySQL 8.0 container setup
-├── .env.example
-├── .env
-├── app/
-│   ├── main.py                # FastAPI endpoints
-│   ├── config.py              # Settings & DB configuration
-│   ├── db/
-│   │   ├── models.py          # SQLAlchemy models (Shipments, Events, Logs, Carriers)
-│   │   └── session.py         # Session management & MySQL connection
-│   ├── schemas/
-│   │   └── tracking.py        # Pydantic schemas (Unified request & response)
-│   ├── core/
-│   │   └── identifier.py      # AWB & Container identification logic
-│   ├── tools/
-│   │   ├── carrier_tools.py   # Carrier identification tool
-│   │   ├── air_tracking_tools.py  # Air provider execution tool
-│   │   ├── sea_tracking_tools.py  # Sea provider execution tool
-│   │   └── db_tools.py        # DB snapshot persistence tool
-│   ├── agents/
-│   │   ├── routing_agent.py   # Routing & plan formation agent
-│   │   └── tracking_agent.py  # Master orchestrator agent
-│   └── providers/
-│       ├── base.py            # BaseProvider interface
-│       ├── air/
-│       │   ├── cathay_cargo.py # Live Cathay Cargo integration
-│       │   ├── emirates_skycargo.py
-│       │   └── generic_air.py
-│       └── sea/
-│           ├── maersk.py
-│           └── generic_ocean.py
-└── tests/
-    ├── test_tracking.py       # Unit and agent workflow tests
-    └── test_api.py            # FastAPI integration tests
-```
+5. **20+ Air Airlines & Global Shipping Lines**:
+   - Direct live tracking for Cathay Pacific (`160`), Emirates (`176`), Japan Airlines (`131`), Lufthansa (`020`), Singapore Airlines (`618`), etc.
+   - Ocean container tracking for Mediterranean Shipping Company (MSC: `MEDU`, `MSCU`, `MSDU`, `MSMU`, `MSNU`) and Maersk (`MAEU`, `MRSU`, `MSKU`, `MRKU`, `HASU`, `SUDU`).
+   - Chronological event sorting with newest milestones first (descending order).
 
 ---
 
-## Quick Start
+## API Endpoints Summary
 
-### 1. Start MySQL (Optional with Docker)
+### Authentication & Account Management
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/auth/register` | Onboard enterprise tenant, admin user, and initial API key |
+| `POST` | `/api/v1/auth/login` | Authenticate user email & password, return JWT tokens |
+| `GET` | `/api/v1/auth/me` | Current caller identity and tenant quota profile |
+
+### API Key Management
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/api-keys` | Generate new scoped API key (`cargotrk_live_...`) |
+| `GET` | `/api/v1/api-keys` | List tenant's active API keys (masked prefixes) |
+| `DELETE` | `/api/v1/api-keys/{id}` | Revoke an API key immediately |
+
+### Subscription & Usage
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/subscription/plans` | List available subscription tiers, pricing, and quotas |
+| `GET` | `/api/v1/subscription/usage` | View real-time monthly tracking credits and remaining quota |
+| `POST` | `/api/v1/subscription/upgrade` | Upgrade or switch subscription tier |
+
+### Tracking & Shipment Portfolio
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/track` | Live track single shipment (Air AWB or Sea Container), meters 1 credit |
+| `POST` | `/api/v1/track/batch` | Bulk tracking (up to 100 queries) |
+| `GET` | `/api/v1/shipments` | List tenant's tracked cargo with pagination and filters |
+| `GET` | `/api/v1/shipments/{tracking_number}` | Full shipment timeline and execution logs |
+
+---
+
+## Running Locally
+
 ```bash
-docker compose up -d
-```
-*(If MySQL is not running, the application automatically uses local SQLite so you can test immediately without setup).*
-
-### 2. Install Dependencies
-```bash
-cd shipment-tracking
-source ../venv/bin/activate
+# 1. Install dependencies
 pip install -r requirements.txt
-```
 
-### 3. Run FastAPI Application
-```bash
+# 2. Run the server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 3. Access Swagger Docs
+open http://localhost:8000/docs
 ```
 
----
-
-## API Usage Examples
-
-### 1. Air Tracking (POST)
-```bash
-curl -X POST http://localhost:8000/api/v1/track \
-  -H "Content-Type: application/json" \
-  -d '{"query": "16015246221"}'
-```
-
-**Response Output:**
-```json
-{
-  "tracking_number": "160-15246221",
-  "mode": "AIR",
-  "carrier": {
-    "code": "CX",
-    "prefix": "160",
-    "name": "Cathay Pacific Cargo",
-    "mode": "AIR",
-    "primary_provider": "cathay_cargo",
-    "fallback_providers": ["generic_air"]
-  },
-  "status": "Delivered",
-  "origin": "CTU",
-  "destination": "MAA",
-  "pieces": 2,
-  "weight": { "unit": "kg", "value": 288.0 },
-  "volume": 0.56,
-  "latest_event": {
-    "station": "MAA",
-    "status_code": "DLV",
-    "status_message": "Delivered",
-    "event_time": "2026-09-24T14:34:00+05:30"
-  },
-  "agent_trail": {
-    "detected_mode": "AIR",
-    "carrier_identified": "Cathay Pacific Cargo",
-    "carrier_code": "CX",
-    "provider_plan": ["cathay_cargo", "generic_air"],
-    "attempts": [
-      {
-        "provider_name": "cathay_cargo",
-        "status": "SUCCESS",
-        "http_status": 200,
-        "latency_ms": 1120.45
-      }
-    ],
-    "final_provider_used": "cathay_cargo"
-  }
-}
-```
-
-### 2. Sea / Ocean Tracking (GET)
-```bash
-curl "http://localhost:8000/api/v1/track?query=MAEU1234567"
-```
-
-### 3. Query Database History & Provider Execution Logs
-```bash
-curl http://localhost:8000/api/v1/history/160-15246221
-```
-
-### 4. Interactive Swagger Documentation
-Open [http://localhost:8000/docs](http://localhost:8000/docs) in your browser.
-
----
-
-## Running Test Suite
+## Running Tests
 
 ```bash
-PYTHONPATH=. pytest tests/ -v
+PYTHONPATH=. pytest -v
 ```
-All 12 test cases test:
-- Parsing AWB prefixes (160 -> Cathay Pacific)
-- Sea container ISO 6346 parsing (MAEU -> Maersk)
-- Fallback mechanics across multiple providers
-- Database recording of snapshots & execution logs
-- Complete FastAPI endpoints integration
