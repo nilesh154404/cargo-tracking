@@ -160,10 +160,9 @@ class DatabasePersistenceTool:
                 shipment.latest_event_status = latest_ev.get("status_message")
 
             for att in attempts:
-                # Truncate response_body to avoid exceeding TEXT column limits
+                req_curl = att.get("request_curl")
                 resp_body = att.get("response_body")
-                if resp_body and len(resp_body) > 65000:
-                    resp_body = resp_body[:65000] + "\n... [TRUNCATED]"
+                err_msg = att.get("error")
 
                 log_entry = ProviderExecutionLog(
                     shipment_id=shipment.id,
@@ -171,14 +170,50 @@ class DatabasePersistenceTool:
                     provider_name=att.get("provider_name", "unknown"),
                     status=att.get("status", "UNKNOWN"),
                     http_status_code=att.get("http_status"),
-                    error_message=att.get("error"),
-                    request_curl=att.get("request_curl"),
-                    response=resp_body,
+                    error_message=str(err_msg) if err_msg else None,
+                    request_curl=str(req_curl) if req_curl else None,
+                    response=str(resp_body) if resp_body else None,
                     latency_ms=att.get("latency_ms", 0.0),
                 )
                 db.add(log_entry)
 
-            db.commit()
+            try:
+                db.commit()
+            except Exception as commit_err:
+                # If column lengths in MySQL prod are VARCHAR(255) instead of TEXT/MEDIUMTEXT, retry with safe truncation
+                err_str = str(commit_err).lower()
+                if "1406" in err_str or "data too long" in err_str or "too long" in err_str or "truncat" in err_str:
+                    logger.warning(f"MySQL schema has column length limits on provider_execution_logs. Retrying with safe truncation: {commit_err}")
+                    db.rollback()
+                    # Re-save shipment snapshot with truncated logs
+                    return cls.save_snapshot_with_truncated_logs(
+                        db=db,
+                        tracking_number=tracking_number,
+                        transport_mode=transport_mode,
+                        carrier_code=carrier_code,
+                        carrier_name=carrier_name,
+                        status=status,
+                        origin=origin,
+                        destination=destination,
+                        pieces=pieces,
+                        weight_val=weight_val,
+                        weight_unit=weight_unit,
+                        volume=volume,
+                        provider_used=provider_used,
+                        events=events,
+                        raw_data=raw_data,
+                        attempts=attempts,
+                        tenant_id=tenant_id,
+                        customer_reference=customer_reference,
+                        mawb_obl_no=mawb_obl_no,
+                        hawb_hbl_no=hawb_hbl_no,
+                        vessel_name=vessel_name,
+                        flight_no=flight_no,
+                        container_number=container_number,
+                        max_log_len=250,
+                    )
+                raise commit_err
+
             db.refresh(shipment)
             return shipment
 
@@ -188,12 +223,93 @@ class DatabasePersistenceTool:
             raise exc
 
     @classmethod
+    def save_snapshot_with_truncated_logs(
+        cls,
+        db: Session,
+        tracking_number: str,
+        transport_mode: str,
+        carrier_code: str,
+        carrier_name: str,
+        status: str,
+        origin: Optional[str],
+        destination: Optional[str],
+        pieces: Optional[int],
+        weight_val: Optional[float],
+        weight_unit: Optional[str],
+        volume: Optional[float],
+        provider_used: str,
+        events: List[Dict[str, Any]],
+        raw_data: Optional[Dict[str, Any]],
+        attempts: List[Dict[str, Any]],
+        tenant_id: Optional[int] = None,
+        customer_reference: Optional[str] = None,
+        mawb_obl_no: Optional[str] = None,
+        hawb_hbl_no: Optional[str] = None,
+        vessel_name: Optional[str] = None,
+        flight_no: Optional[str] = None,
+        container_number: Optional[str] = None,
+        max_log_len: int = 250,
+    ) -> Shipment:
+        """Fallback saver that truncates log fields to fit legacy VARCHAR(255) columns."""
+        # Query or update shipment
+        stmt = select(Shipment).where(Shipment.tracking_number == tracking_number)
+        shipment = db.execute(stmt).scalar_one_or_none()
+        if not shipment:
+            shipment = Shipment(
+                tenant_id=tenant_id,
+                customer_reference=customer_reference,
+                tracking_number=tracking_number,
+                transport_mode=transport_mode,
+                carrier_code=carrier_code,
+                carrier_name=carrier_name,
+                awb_number=tracking_number if transport_mode == "AIR" else None,
+                container_number=container_number or (tracking_number if transport_mode == "SEA" else None),
+                mawb_obl_no=mawb_obl_no or (tracking_number if transport_mode == "AIR" else None),
+                hawb_hbl_no=hawb_hbl_no,
+                vessel_name=vessel_name,
+                flight_no=flight_no,
+                origin=origin,
+                destination=destination,
+                status=status,
+                pieces=pieces,
+                weight=weight_val,
+                weight_unit=weight_unit or "kg",
+                volume=volume,
+                last_provider_used=provider_used,
+            )
+            db.add(shipment)
+            db.flush()
+
+        for att in attempts:
+            req_curl = att.get("request_curl")
+            resp_body = att.get("response_body")
+            err_msg = att.get("error")
+
+            log_entry = ProviderExecutionLog(
+                shipment_id=shipment.id,
+                tracking_number=tracking_number,
+                provider_name=att.get("provider_name", "unknown")[:100],
+                status=att.get("status", "UNKNOWN")[:50],
+                http_status_code=att.get("http_status"),
+                error_message=str(err_msg)[:max_log_len] if err_msg else None,
+                request_curl=str(req_curl)[:max_log_len] if req_curl else None,
+                response=str(resp_body)[:max_log_len] if resp_body else None,
+                latency_ms=att.get("latency_ms", 0.0),
+            )
+            db.add(log_entry)
+
+        db.commit()
+        db.refresh(shipment)
+        return shipment
+
+    @classmethod
     def record_execution_logs(
         cls,
         db: Session,
         tracking_number: str,
         attempts: List[Dict[str, Any]],
         shipment_id: Optional[int] = None,
+        max_log_len: Optional[int] = None,
     ):
         """Persists provider execution attempts (cURL and responses) to MySQL even when tracking does not yield milestones."""
         try:
@@ -202,24 +318,40 @@ class DatabasePersistenceTool:
                 shipment_id = db.execute(stmt).scalar_one_or_none()
 
             for att in attempts:
+                req_curl = att.get("request_curl")
                 resp_body = att.get("response_body")
-                if resp_body and len(resp_body) > 65000:
-                    resp_body = resp_body[:65000] + "\n... [TRUNCATED]"
+                err_msg = att.get("error")
+
+                if max_log_len:
+                    req_curl = str(req_curl)[:max_log_len] if req_curl else None
+                    resp_body = str(resp_body)[:max_log_len] if resp_body else None
+                    err_msg = str(err_msg)[:max_log_len] if err_msg else None
 
                 log_entry = ProviderExecutionLog(
                     shipment_id=shipment_id,
-                    tracking_number=tracking_number,
-                    provider_name=att.get("provider_name", "unknown"),
-                    status=att.get("status", "UNKNOWN"),
+                    tracking_number=tracking_number[:100],
+                    provider_name=att.get("provider_name", "unknown")[:100],
+                    status=att.get("status", "UNKNOWN")[:50],
                     http_status_code=att.get("http_status"),
-                    error_message=att.get("error"),
-                    request_curl=att.get("request_curl"),
-                    response=resp_body,
+                    error_message=str(err_msg) if err_msg else None,
+                    request_curl=str(req_curl) if req_curl else None,
+                    response=str(resp_body) if resp_body else None,
                     latency_ms=att.get("latency_ms", 0.0),
                 )
                 db.add(log_entry)
             db.commit()
         except Exception as exc:
+            err_str = str(exc).lower()
+            if max_log_len is None and ("1406" in err_str or "data too long" in err_str or "too long" in err_str or "truncat" in err_str):
+                logger.warning(f"Retrying record_execution_logs with safe VARCHAR(255) truncation: {exc}")
+                db.rollback()
+                return cls.record_execution_logs(
+                    db=db,
+                    tracking_number=tracking_number,
+                    attempts=attempts,
+                    shipment_id=shipment_id,
+                    max_log_len=250,
+                )
             db.rollback()
             logger.error(f"Error recording execution logs to DB: {exc}")
 

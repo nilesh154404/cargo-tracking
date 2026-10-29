@@ -32,6 +32,7 @@ from app.providers.sea.maersk import MaerskProvider
 from app.providers.sea.msc import MscProvider
 from app.providers.sea.ldb_container import LdbContainerProvider
 from app.providers.sea.one_line import OneLineProvider
+from app.providers.sea.track_trace import TrackTraceProvider
 from app.providers.sea.generic_ocean import GenericOceanProvider
 
 _ldb_instance = LdbContainerProvider()
@@ -70,6 +71,7 @@ _REGISTRY: Dict[str, BaseProvider] = {
     "msc": MscProvider(),
     "ldb_container": _ldb_instance,
     "one_line": _one_line_instance,
+    "track_trace": TrackTraceProvider(),
     "generic_ocean": GenericOceanProvider(),
 }
 

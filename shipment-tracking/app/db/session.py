@@ -302,7 +302,7 @@ def seed_default_carriers(session: Session):
             "name": "Maersk Line",
             "mode": "SEA",
             "primary_provider": "maersk",
-            "fallback_providers": "ldb_container,generic_ocean",
+            "fallback_providers": "track_trace,ldb_container,generic_ocean",
         },
         {
             "code": "MSC",

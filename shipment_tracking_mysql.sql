@@ -223,9 +223,9 @@ CREATE TABLE `provider_execution_logs` (
   `provider_name` VARCHAR(100) NOT NULL,
   `status` VARCHAR(50) NOT NULL,
   `http_status_code` INT NULL,
-  `error_message` VARCHAR(255) NULL,
-  `request_curl` VARCHAR(255) NULL,
-  `response` VARCHAR(255) NULL,
+  `error_message` TEXT NULL,
+  `request_curl` MEDIUMTEXT NULL,
+  `response` MEDIUMTEXT NULL,
   `latency_ms` DOUBLE NULL,
   `created_at` DATETIME NULL,
   PRIMARY KEY (`id`)

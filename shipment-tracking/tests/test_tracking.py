@@ -203,9 +203,22 @@ def test_identifier_sea_hasu_maersk():
     res = parse_and_identify("HASU4935791")
     assert res.mode == "SEA"
     assert res.carrier_code == "MSK"
+    assert res.carrier_name == "Maersk Line"
     assert res.prefix == "HASU"
     assert res.primary_provider == "maersk"
+    assert "track_trace" in res.fallback_providers
     assert "ldb_container" in res.fallback_providers
+    assert res.is_supported is True
+
+
+def test_identifier_hasu4644219_routing_and_fallback_queue():
+    res = parse_and_identify("HASU4644219")
+    assert res.mode == "SEA"
+    assert res.carrier_code == "MSK"
+    assert res.carrier_name == "Maersk Line"
+    assert res.prefix == "HASU"
+    assert res.primary_provider == "maersk"
+    assert res.fallback_providers == ["track_trace", "ldb_container", "generic_ocean"]
     assert res.is_supported is True
 
 

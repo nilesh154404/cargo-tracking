@@ -204,37 +204,37 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
         "carrier_code": "MSK",
         "name": "Maersk Line",
         "primary_provider": "maersk",
-        "fallback_providers": "ldb_container,generic_ocean",
+        "fallback_providers": "track_trace,ldb_container,generic_ocean",
     },
     "MRSU": {
         "carrier_code": "MSK",
         "name": "Maersk Line",
         "primary_provider": "maersk",
-        "fallback_providers": "ldb_container,generic_ocean",
+        "fallback_providers": "track_trace,ldb_container,generic_ocean",
     },
     "MSKU": {
         "carrier_code": "MSK",
         "name": "Maersk Line",
         "primary_provider": "maersk",
-        "fallback_providers": "ldb_container,generic_ocean",
+        "fallback_providers": "track_trace,ldb_container,generic_ocean",
     },
     "MRKU": {
         "carrier_code": "MSK",
         "name": "Maersk Line",
         "primary_provider": "maersk",
-        "fallback_providers": "ldb_container,generic_ocean",
+        "fallback_providers": "track_trace,ldb_container,generic_ocean",
     },
     "HASU": {
         "carrier_code": "MSK",
-        "name": "Hamburg Süd / Maersk Line",
+        "name": "Maersk Line",
         "primary_provider": "maersk",
-        "fallback_providers": "ldb_container,generic_ocean",
+        "fallback_providers": "track_trace,ldb_container,generic_ocean",
     },
     "SUDU": {
         "carrier_code": "MSK",
-        "name": "Hamburg Süd / Maersk Line",
+        "name": "Maersk Line",
         "primary_provider": "maersk",
-        "fallback_providers": "ldb_container,generic_ocean",
+        "fallback_providers": "track_trace,ldb_container,generic_ocean",
     },
     "MSCU": {
         "carrier_code": "MSC",
@@ -322,7 +322,7 @@ LIVE_SUPPORTED_AIR_PROVIDERS = {
     "virgin_atlantic_cargo",
     "emirates_skycargo",
 }
-LIVE_SUPPORTED_SEA_PROVIDERS = {"msc", "ldb_container", "one_line", "maersk"}
+LIVE_SUPPORTED_SEA_PROVIDERS = {"msc", "ldb_container", "one_line", "maersk", "track_trace"}
 
 
 class IdentificationResult:
