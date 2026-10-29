@@ -447,15 +447,18 @@ def parse_and_identify(
             relatable_message=None,
         )
 
-    # 1. SEA Container detection: Standard ISO 6346 container (4 alpha + 7 digits, e.g. MSMU6484830)
-    container_match = re.match(r"^([A-Z]{4})(\d{7})$", cleaned)
-    if container_match or (explicit_mode == "SEA" and len(cleaned) >= 7):
+    # 1. SEA Container detection: Standard ISO 6346 container (4 alpha + 6 or 7 digits, e.g. MSMU6484830, AKLU1234567)
+    clean_alphanumeric = re.sub(r"[^A-Z0-9]", "", cleaned)
+    container_match = re.match(r"^([A-Z]{4})(\d{6,7})$", clean_alphanumeric)
+    if container_match or (explicit_mode == "SEA" and len(clean_alphanumeric) >= 7):
         if container_match:
             prefix = container_match.group(1)
             serial = container_match.group(2)
+            cleaned = clean_alphanumeric
         else:
-            prefix = cleaned[:4]
-            serial = cleaned[4:]
+            prefix = clean_alphanumeric[:4]
+            serial = clean_alphanumeric[4:]
+            cleaned = clean_alphanumeric
 
         # Check DB first
         db_carrier = _lookup_db_carrier(db, prefix, "SEA")

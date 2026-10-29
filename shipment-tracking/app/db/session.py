@@ -48,6 +48,11 @@ def _auto_migrate(engine):
             except Exception:
                 pass
 
+        try:
+            conn.execute(text("ALTER TABLE carriers MODIFY COLUMN prefix VARCHAR(500)"))
+        except Exception:
+            pass
+
 
 def init_db_engine():
     global engine, SessionLocal
@@ -336,6 +341,42 @@ def seed_default_carriers(session: Session):
                 existing.fallback_providers = c["fallback_providers"]
                 existing.name = c["name"]
         session.commit()
+
+        # Dynamically seed all ocean container carriers from PREFIX_DB
+        try:
+            from app.core.container_prefixes_data import PREFIX_DB
+            from collections import defaultdict
+            carrier_groups = defaultdict(lambda: {"prefixes": [], "slug": ""})
+            for pfx, info in PREFIX_DB.items():
+                c_name = info.get("carrier") or f"Shipping Line ({pfx})"
+                slug = (info.get("slug") or pfx.lower()).upper().replace("-", "_")[:10]
+                carrier_groups[c_name]["prefixes"].append(pfx)
+                if not carrier_groups[c_name]["slug"]:
+                    carrier_groups[c_name]["slug"] = slug
+
+            for c_name, grp in carrier_groups.items():
+                code = grp["slug"]
+                if code in ("MSK", "MSC", "ONE", "MAERSK"):
+                    continue
+                prefixes_str = ",".join(sorted(grp["prefixes"]))[:500]
+                existing = session.execute(
+                    select(Carrier).where(Carrier.code == code)
+                ).scalar_one_or_none()
+                if not existing:
+                    carrier = Carrier(
+                        code=code,
+                        prefix=prefixes_str,
+                        name=c_name,
+                        mode="SEA",
+                        primary_provider="containertracking_net",
+                        fallback_providers="generic_ocean",
+                    )
+                    session.add(carrier)
+                else:
+                    existing.prefix = prefixes_str
+            session.commit()
+        except Exception as exc:
+            logger.warning(f"Error seeding extended ocean carriers: {exc}")
     except Exception as exc:
         session.rollback()
         logger.error(f"Error seeding carriers: {exc}")
