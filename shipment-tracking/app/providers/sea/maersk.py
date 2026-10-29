@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -144,21 +145,22 @@ class MaerskProvider(BaseProvider):
                 if resp.status_code == 403:
                     logger.warning(
                         f"Maersk API returned 403 (Akamai block) for {container_id}. "
-                        "Telemetry may have expired. Set MAERSK_AKAMAI_TELEMETRY env var."
+                        "Attempting browser fallback via Playwright..."
                     )
-                    return ProviderResult(
-                        success=False,
-                        provider_name=self.name,
-                        status_code=403,
-                        error=(
-                            f"Maersk API returned 403 Forbidden for container {container_id}. "
-                            "Akamai bot protection blocked the request. "
-                            "Please refresh the MAERSK_AKAMAI_TELEMETRY environment variable."
-                        ),
-                        latency_ms=latency,
-                    )
-
-                if resp.status_code == 404:
+                    data = await self._track_via_browser(container_id)
+                    if not data:
+                        return ProviderResult(
+                            success=False,
+                            provider_name=self.name,
+                            status_code=403,
+                            error=(
+                                f"Maersk API returned 403 Forbidden for container {container_id}. "
+                                "Akamai bot protection blocked the request. "
+                                "Please refresh the MAERSK_AKAMAI_TELEMETRY environment variable."
+                            ),
+                            latency_ms=latency,
+                        )
+                elif resp.status_code == 404:
                     return ProviderResult(
                         success=False,
                         provider_name=self.name,
@@ -166,8 +168,7 @@ class MaerskProvider(BaseProvider):
                         error=f"No tracking data found for container {container_id} on Maersk",
                         latency_ms=latency,
                     )
-
-                if resp.status_code != 200:
+                elif resp.status_code != 200:
                     return ProviderResult(
                         success=False,
                         provider_name=self.name,
@@ -175,8 +176,8 @@ class MaerskProvider(BaseProvider):
                         error=f"Maersk API returned HTTP {resp.status_code}: {resp.text[:300]}",
                         latency_ms=latency,
                     )
-
-                data = resp.json()
+                else:
+                    data = resp.json()
 
                 # Parse containers array (API returns tracking for all containers in shipment)
                 containers = data.get("containers", [])
@@ -221,7 +222,7 @@ class MaerskProvider(BaseProvider):
                     events = location.get("events", [])
                     for ev in events:
                         activity = ev.get("activity") or ev.get("event") or "Status Update"
-                        event_date = ev.get("date") or ev.get("expected_date")
+                        event_date = ev.get("date") or ev.get("expected_date") or ev.get("event_time")
                         vessel = ev.get("vessel_name") or vessel_name
                         voyage = ev.get("voyage_num") or ""
 
@@ -311,3 +312,75 @@ class MaerskProvider(BaseProvider):
                 error=f"Unexpected error parsing Maersk response: {str(exc)}",
                 latency_ms=latency,
             )
+
+    async def _track_via_browser(self, container_id: str) -> Optional[Dict[str, Any]]:
+        """Fallback browser session to bypass Akamai Bot Manager using Playwright."""
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            logger.warning("Playwright not installed, skipping browser fallback.")
+            return None
+
+        chrome_paths = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        ]
+        executable_path = next((p for p in chrome_paths if os.path.exists(p)), None)
+
+        try:
+            async with async_playwright() as p:
+                launch_kwargs = {
+                    "headless": True,
+                    "args": [
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-blink-features=AutomationControlled",
+                    ]
+                }
+                if executable_path:
+                    launch_kwargs["executable_path"] = executable_path
+
+                browser = await p.chromium.launch(**launch_kwargs)
+                context = await browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    viewport={"width": 1280, "height": 800},
+                )
+                page = await context.new_page()
+
+                captured: Dict[str, Any] = {}
+
+                async def handle_response(response):
+                    url = response.url
+                    if f"tracking/{container_id}" in url or f"tracking/{container_id.upper()}" in url:
+                        try:
+                            content_type = response.headers.get("content-type", "")
+                            if "json" in content_type:
+                                body = await response.json()
+                                if body and isinstance(body, dict) and "containers" in body:
+                                    captured["data"] = body
+                        except Exception:
+                            pass
+
+                page.on("response", handle_response)
+
+                nav_url = f"https://www.maersk.com/tracking/{container_id}"
+                try:
+                    await page.goto(nav_url, wait_until="networkidle", timeout=35000)
+                except Exception as e:
+                    logger.debug(f"Maersk browser navigation notice: {e}")
+
+                # Wait for data interception
+                for _ in range(6):
+                    if "data" in captured:
+                        break
+                    await asyncio.sleep(1.0)
+
+                await browser.close()
+                return captured.get("data")
+        except Exception as exc:
+            logger.error(f"Error during Maersk browser tracking fallback: {exc}")
+            return None
