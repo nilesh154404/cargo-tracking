@@ -10,6 +10,7 @@ from app.services.location_matcher import match_location
 logger = logging.getLogger("shipment_tracking.providers.one_line")
 
 ONE_API_SEARCH_URL = "https://ecomm.one-line.com/api/v2/edh/containers/track-and-trace/search"
+ONE_API_COP_EVENTS_URL = "https://ecomm.one-line.com/api/v2/edh/containers/track-and-trace/cop-events"
 
 ONE_HEADERS = {
     "accept": "application/json, text/plain, */*",
@@ -165,13 +166,45 @@ class OneLineProvider(BaseProvider):
                     data_json = resp.json()
                     containers_data = data_json.get("data") or []
                     if containers_data:
-                        # Success! Parse container(s) tracking data
+                        # Success! Now fetch detailed COP events for each container
+                        cop_events_by_container: Dict[str, List[Dict[str, Any]]] = {}
+                        last_cop_curl: Optional[str] = None
+
+                        async with httpx.AsyncClient(timeout=15.0) as cop_client:
+                            for c in containers_data:
+                                c_no = c.get("containerNo")
+                                b_no = c.get("bookingNo")
+                                if c_no and b_no:
+                                    try:
+                                        cop_corr_id = str(uuid.uuid4())
+                                        cop_headers = {**ONE_HEADERS, "x-correlation-id": cop_corr_id}
+                                        cop_params = {"booking_no": b_no, "container_no": c_no}
+                                        cop_full_url = f"{ONE_API_COP_EVENTS_URL}?booking_no={b_no}&container_no={c_no}"
+                                        last_cop_curl = self.build_curl_command(
+                                            method="GET",
+                                            url=cop_full_url,
+                                            headers=cop_headers,
+                                        )
+                                        cop_resp = await cop_client.get(
+                                            ONE_API_COP_EVENTS_URL,
+                                            params=cop_params,
+                                            headers=cop_headers,
+                                        )
+                                        if cop_resp.status_code in (200, 201):
+                                            cop_data = cop_resp.json().get("data") or []
+                                            cop_events_by_container[c_no] = cop_data
+                                    except Exception as cop_exc:
+                                        logger.warning(f"Error fetching ONE Line COP events for {c_no} / {b_no}: {cop_exc}")
+
+                        latency_ms = round((time.time() - start_time) * 1000, 2)
                         return self._parse_tracking_response(
                             containers_data=containers_data,
+                            cop_events_by_container=cop_events_by_container,
                             search_text=search_text,
                             search_type=search_type,
                             raw_target=raw_target,
-                            curl_cmd=curl_cmd,
+                            search_curl=curl_cmd,
+                            cop_curl=last_cop_curl,
                             resp_text=resp.text,
                             latency_ms=latency_ms,
                         )
@@ -201,13 +234,16 @@ class OneLineProvider(BaseProvider):
         search_text: str,
         search_type: str,
         raw_target: str,
-        curl_cmd: str,
-        resp_text: str,
-        latency_ms: float,
+        search_curl: Optional[str] = None,
+        cop_curl: Optional[str] = None,
+        cop_events_by_container: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        curl_cmd: Optional[str] = None,
+        resp_text: Optional[str] = None,
+        latency_ms: float = 0.0,
     ) -> ProviderResult:
         """
         Parses ONE Line response containing one or more containers (e.g. multi-container booking).
-        Aggregates events, coordinates, and container breakdown.
+        Aggregates events (preferring detailed COP events), coordinates, and container breakdown.
         """
         all_events: List[Dict[str, Any]] = []
         containers_summary: List[Dict[str, Any]] = []
@@ -218,6 +254,7 @@ class OneLineProvider(BaseProvider):
         destination = None
         latest_status_message = "IN_TRANSIT"
         latest_event_overall: Optional[Dict[str, Any]] = None
+        cop_map = cop_events_by_container or {}
 
         for c in containers_data:
             c_no = c.get("containerNo") or raw_target
@@ -246,50 +283,108 @@ class OneLineProvider(BaseProvider):
 
             latest_ev = c.get("latestEvent") or {}
             latest_ev_name = latest_ev.get("eventName")
-            latest_ev_date = latest_ev.get("date")
-            latest_ev_loc = latest_ev.get("locationName")
             if latest_ev_name:
                 latest_status_message = latest_ev_name
 
-            cargo_events = c.get("cargoEvents") or []
-            for ev in cargo_events:
-                matrix_id = ev.get("matrixId")
-                loc_name = ev.get("locationName")
-                country_name = ev.get("countryName")
-                country_code = ev.get("countryCode")
-                date_iso = ev.get("localPortDate") or ev.get("date")
-                trigger = ev.get("trigger") or "ACTUAL"
+            c_cop_events = cop_map.get(c_no) or []
+            if c_cop_events:
+                # 1. Parse rich COP events from /cop-events endpoint
+                for ev in c_cop_events:
+                    ev_name = ev.get("eventName") or "Milestone"
+                    date_iso = ev.get("eventDate") or ev.get("eventLocalPortDate")
+                    matrix_id = ev.get("matrixId") or ev.get("opusCode") or "EVENT"
+                    trigger = ev.get("triggerType") or "ACTUAL"
 
-                status_name = ONE_MATRIX_EVENT_NAMES.get(
-                    matrix_id,
-                    latest_ev_name if matrix_id == latest_ev.get("matrixId") else f"Milestone ({matrix_id})",
-                )
+                    loc = ev.get("location") or {}
+                    loc_name = loc.get("locationName") or ev.get("nodeCode")
+                    country_name = loc.get("countryName")
+                    station_str = loc_name
+                    if country_name and country_name not in (station_str or ""):
+                        station_str = f"{station_str}, {country_name}" if station_str else country_name
 
-                station_str = loc_name
-                if country_name and country_name not in (station_str or ""):
-                    station_str = f"{station_str}, {country_name}" if station_str else country_name
+                    yard = ev.get("yard") or {}
+                    yard_name = yard.get("yardName")
+                    if yard_name:
+                        station_str = f"{station_str} ({yard_name})" if station_str else yard_name
 
-                # Match coordinates with seaport location dataset
-                coords = match_location(loc_name or station_str, "SEA")
+                    # Coordinate lookup
+                    coords = match_location(loc.get("locationName") or station_str, "SEA")
 
-                flight_info_str = f"{c_no}"
-                if c_vessel:
-                    flight_info_str += f" | {c_vessel}"
-                    if c_voyage:
-                        flight_info_str += f" (Voyage {c_voyage})"
+                    ev_vessel = ev.get("vessel") or ev.get("edhVessel") or {}
+                    v_name = ev_vessel.get("name") or c_vessel
+                    v_voy = ev_vessel.get("voyNo") or c_voyage
+                    flight_info_str = f"{c_no}"
+                    if v_name:
+                        flight_info_str += f" | {v_name}"
+                        if v_voy:
+                            flight_info_str += f" (Voyage {v_voy})"
 
-                ev_dict = {
-                    "station": station_str,
-                    "status_code": matrix_id or "EVENT",
-                    "status_message": f"[{c_no}] {status_name}" if len(containers_data) > 1 else status_name,
-                    "event_time": date_iso,
-                    "flight_info": flight_info_str,
-                    "pieces": 1,
-                    "weight": w_val,
-                    "raw_status": trigger,
-                    "coordinates": coords,
-                }
-                all_events.append(ev_dict)
+                    ev_dict = {
+                        "station": station_str,
+                        "status_code": matrix_id,
+                        "status_message": f"[{c_no}] {ev_name}" if len(containers_data) > 1 else ev_name,
+                        "event_time": date_iso,
+                        "flight_info": flight_info_str,
+                        "pieces": 1,
+                        "weight": w_val,
+                        "raw_status": trigger,
+                        "coordinates": coords,
+                    }
+                    all_events.append(ev_dict)
+
+                # Determine latest status from the last ACTUAL milestone
+                actual_events = [ev for ev in c_cop_events if ev.get("triggerType") == "ACTUAL"]
+                if actual_events:
+                    latest_status_message = actual_events[-1].get("eventName") or latest_status_message
+
+                # Enrich origin and destination if missing
+                if not origin and c_cop_events:
+                    first_loc = (c_cop_events[0].get("location") or {}).get("locationName")
+                    if first_loc:
+                        origin = first_loc
+                if not destination and c_cop_events:
+                    last_loc = (c_cop_events[-1].get("location") or {}).get("locationName")
+                    if last_loc:
+                        destination = last_loc
+            else:
+                # 2. Fallback to cargoEvents from container search
+                cargo_events = c.get("cargoEvents") or []
+                for ev in cargo_events:
+                    matrix_id = ev.get("matrixId")
+                    loc_name = ev.get("locationName")
+                    country_name = ev.get("countryName")
+                    date_iso = ev.get("localPortDate") or ev.get("date")
+                    trigger = ev.get("trigger") or "ACTUAL"
+
+                    status_name = ONE_MATRIX_EVENT_NAMES.get(
+                        matrix_id,
+                        latest_ev_name if matrix_id == latest_ev.get("matrixId") else f"Milestone ({matrix_id})",
+                    )
+
+                    station_str = loc_name
+                    if country_name and country_name not in (station_str or ""):
+                        station_str = f"{station_str}, {country_name}" if station_str else country_name
+
+                    coords = match_location(loc_name or station_str, "SEA")
+
+                    flight_info_str = f"{c_no}"
+                    if c_vessel:
+                        flight_info_str += f" | {c_vessel}"
+                        if c_voyage:
+                            flight_info_str += f" (Voyage {c_voyage})"
+
+                    ev_dict = {
+                        "station": station_str,
+                        "status_code": matrix_id or "EVENT",
+                        "status_message": f"[{c_no}] {status_name}" if len(containers_data) > 1 else status_name,
+                        "event_time": date_iso,
+                        "flight_info": flight_info_str,
+                        "pieces": 1,
+                        "weight": w_val,
+                        "raw_status": trigger,
+                        "coordinates": coords,
+                    }
+                    all_events.append(ev_dict)
 
             containers_summary.append({
                 "container_number": c_no,
@@ -299,31 +394,55 @@ class OneLineProvider(BaseProvider):
                 "weight_kg": w_val,
                 "vessel_name": c_vessel,
                 "voyage_no": c_voyage,
-                "origin": c_origin,
-                "destination": c_dest,
-                "status": latest_ev_name or "In Transit",
+                "origin": c_origin or origin,
+                "destination": c_dest or destination,
+                "status": latest_status_message,
                 "latest_event": latest_ev,
-                "events_count": len(cargo_events),
+                "cop_events_count": len(c_cop_events),
+                "events_count": len(c_cop_events) if c_cop_events else len(c.get("cargoEvents") or []),
             })
 
         # Set latest overall event
         if containers_data:
             c0 = containers_data[0]
-            le = c0.get("latestEvent") or {}
-            le_loc = le.get("locationName")
-            coords = match_location(le_loc, "SEA") if le_loc else None
-            latest_event_overall = {
-                "station": le_loc,
-                "status_code": le.get("matrixId") or "LATEST",
-                "status_message": le.get("eventName") or latest_status_message,
-                "event_time": le.get("date"),
-                "flight_info": f"{c0.get('containerNo')} | {vessel_name or ''}".strip(" |"),
-                "coordinates": coords,
-            }
+            c0_no = c0.get("containerNo") or raw_target
+            c0_cop = cop_map.get(c0_no) or []
+            if c0_cop:
+                actuals = [ev for ev in c0_cop if ev.get("triggerType") == "ACTUAL"]
+                le_cop = actuals[-1] if actuals else c0_cop[-1]
+                loc = le_cop.get("location") or {}
+                le_loc = loc.get("locationName") or le_cop.get("nodeCode")
+                coords = match_location(le_loc, "SEA") if le_loc else None
+                le_vessel = le_cop.get("vessel") or le_cop.get("edhVessel") or {}
+                v_name = le_vessel.get("name") or vessel_name
+                latest_event_overall = {
+                    "station": le_loc,
+                    "status_code": le_cop.get("matrixId") or le_cop.get("opusCode") or "LATEST",
+                    "status_message": le_cop.get("eventName") or latest_status_message,
+                    "event_time": le_cop.get("eventDate") or le_cop.get("eventLocalPortDate"),
+                    "flight_info": f"{c0_no} | {v_name or ''}".strip(" |"),
+                    "coordinates": coords,
+                }
+            else:
+                le = c0.get("latestEvent") or {}
+                le_loc = le.get("locationName")
+                coords = match_location(le_loc, "SEA") if le_loc else None
+                latest_event_overall = {
+                    "station": le_loc,
+                    "status_code": le.get("matrixId") or "LATEST",
+                    "status_message": le.get("eventName") or latest_status_message,
+                    "event_time": le.get("date"),
+                    "flight_info": f"{c0.get('containerNo')} | {vessel_name or ''}".strip(" |"),
+                    "coordinates": coords,
+                }
 
         weight_dict = None
         if total_weight_kg > 0:
             weight_dict = {"value": round(total_weight_kg, 2), "unit": "kg"}
+
+        effective_curl = search_curl or curl_cmd
+        if cop_curl:
+            effective_curl = f"{effective_curl}\n\n# --- Step 2: ONE Line Detailed COP Events API ---\n{cop_curl}"
 
         raw_data_summary = {
             "search_text": search_text,
@@ -332,6 +451,9 @@ class OneLineProvider(BaseProvider):
             "containers": containers_summary,
             "vessel_name": vessel_name,
             "voyage_no": voyage_no,
+            "search_curl": search_curl or curl_cmd,
+            "cop_events_curl": cop_curl,
+            "cop_events": cop_map,
         }
 
         return ProviderResult(
@@ -347,7 +469,7 @@ class OneLineProvider(BaseProvider):
             events=all_events,
             latest_event=latest_event_overall,
             raw_data=raw_data_summary,
-            request_curl=curl_cmd,
+            request_curl=effective_curl,
             response_body=resp_text,
             latency_ms=latency_ms,
         )

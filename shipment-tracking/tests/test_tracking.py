@@ -191,6 +191,19 @@ async def test_agent_tracking_sea_one_ldb(db_session):
     assert "Shipment tracked successfully" in response.message
 
 
+@pytest.mark.asyncio
+async def test_agent_tracking_sea_one_cop_events(db_session):
+    orchestrator = TrackingOrchestratorAgent()
+    response = await orchestrator.execute_tracking(
+        query="ONEU5436776",
+        db=db_session,
+    )
+    assert response.mode == "SEA"
+    assert response.carrier.code == "ONE"
+    assert response.agent_trail.final_provider_used in ("one_line", "ldb_container", "generic_ocean")
+    assert response.status != "NOT_SUPPORTED"
+
+
 def test_identifier_sea_mrsu_maersk():
     res = parse_and_identify("MRSU0229101")
     assert res.mode == "SEA"
