@@ -257,6 +257,14 @@ export async function impersonateTenant(tenantId) {
   });
 }
 
+export async function resetTenantPassword(tenantId, payload = {}) {
+  return apiRequest(`/admin/tenants/${tenantId}/reset-password`, {
+    method: "POST",
+    useStaffAuth: true,
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getCarrierHealthSla() {
   return apiRequest("/admin/carriers", { useStaffAuth: true });
 }

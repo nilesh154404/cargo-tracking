@@ -508,3 +508,19 @@ class AdminTenantCreatedResponse(BaseModel):
     api_key: dict
 
 
+class AdminResetTenantPasswordRequest(BaseModel):
+    user_id: Optional[int] = Field(None, description="Optional specific user ID under this tenant to reset. Defaults to primary admin.")
+    new_password: Optional[str] = Field(None, min_length=6, max_length=128, description="Optional new password. If omitted, a secure random password is generated.")
+
+
+class AdminResetPasswordResponse(BaseModel):
+    status: str = "success"
+    message: str
+    tenant_id: int
+    tenant_name: str
+    user_id: int
+    user_email: str
+    new_password: str
+
+
+

@@ -4,7 +4,7 @@ import math
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status, Body
 from sqlalchemy import select, or_, func, desc
 from sqlalchemy.orm import Session
 
@@ -53,6 +53,8 @@ from app.schemas.tracking import (
     BatchTrackingResponse,
     AdminCreateTenantRequest,
     AdminTenantCreatedResponse,
+    AdminResetTenantPasswordRequest,
+    AdminResetPasswordResponse,
 )
 from app.agents.tracking_agent import TrackingOrchestratorAgent
 from app.providers import list_providers
@@ -1413,6 +1415,17 @@ def list_admin_tenants(
     result = []
     for t in tenants:
         active_keys = len([k for k in t.api_keys if k.is_active])
+        users_list = [
+            {
+                "id": u.id,
+                "email": u.email,
+                "full_name": u.full_name,
+                "role": u.role,
+                "is_active": u.is_active,
+            }
+            for u in t.users
+        ]
+        primary_admin = next((u for u in t.users if u.role in ("ADMIN", "SUPER_ADMIN")), t.users[0] if t.users else None)
         result.append({
             "id": t.id,
             "name": t.name,
@@ -1424,6 +1437,9 @@ def list_admin_tenants(
             "allow_overage": t.allow_overage,
             "is_active": t.is_active,
             "active_api_keys": active_keys,
+            "users": users_list,
+            "admin_email": primary_admin.email if primary_admin else None,
+            "admin_user_id": primary_admin.id if primary_admin else None,
             "created_at": t.created_at.isoformat() if t.created_at else None,
         })
     return result
@@ -1466,6 +1482,113 @@ def update_tenant_quota(
             "is_active": tenant.is_active,
         }
     }
+
+
+@app.post("/api/v1/admin/tenants/{tenant_id}/reset-password", response_model=AdminResetPasswordResponse)
+def admin_reset_tenant_password(
+    tenant_id: int,
+    req: AdminResetTenantPasswordRequest = Body(default=AdminResetTenantPasswordRequest()),
+    auth: AuthContext = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Superadmin endpoint to reset the password of a tenant's user/admin."""
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant organization not found")
+
+    target_user = None
+    if req.user_id:
+        target_user = db.execute(
+            select(User).where(User.id == req.user_id, User.tenant_id == tenant.id)
+        ).scalar_one_or_none()
+        if not target_user:
+            raise HTTPException(status_code=404, detail=f"User ID {req.user_id} not found under tenant '{tenant.name}'")
+    else:
+        # Default to the primary admin or first user of the tenant
+        target_user = db.execute(
+            select(User).where(User.tenant_id == tenant.id).order_by(User.id.asc())
+        ).scalars().first()
+
+    if not target_user:
+        # If tenant has no user yet, create a default admin user for this tenant
+        admin_email = f"admin@{tenant.slug}.com"
+        target_user = User(
+            tenant_id=tenant.id,
+            email=admin_email,
+            password_hash="",
+            full_name=f"{tenant.name} Administrator",
+            role="ADMIN",
+            is_active=True,
+        )
+        db.add(target_user)
+        db.flush()
+
+    new_password = req.new_password
+    if not new_password or not new_password.strip():
+        # Auto-generate a secure, high-entropy password meeting complexity rules
+        random_suffix = secrets.token_hex(4).upper()
+        new_password = f"Cargo!{random_suffix}2026"
+    else:
+        new_password = new_password.strip()
+        if len(new_password) < 6:
+            raise HTTPException(status_code=400, detail="New password must be at least 6 characters long.")
+
+    target_user.password_hash = hash_password(new_password)
+    target_user.is_active = True
+    db.commit()
+    db.refresh(target_user)
+
+    return AdminResetPasswordResponse(
+        status="success",
+        message=f"Password for '{target_user.email}' (Tenant: '{tenant.name}') successfully reset.",
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+        user_id=target_user.id,
+        user_email=target_user.email,
+        new_password=new_password,
+    )
+
+
+@app.post("/api/v1/admin/users/{user_id}/reset-password", response_model=AdminResetPasswordResponse)
+def admin_reset_user_password(
+    user_id: int,
+    req: AdminResetTenantPasswordRequest = Body(default=AdminResetTenantPasswordRequest()),
+    auth: AuthContext = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Superadmin endpoint to reset any user's password directly by user ID."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    tenant = user.tenant
+    tenant_name = tenant.name if tenant else "Platform Staff"
+    tenant_id = tenant.id if tenant else 0
+
+    new_password = req.new_password
+    if not new_password or not new_password.strip():
+        random_suffix = secrets.token_hex(4).upper()
+        new_password = f"Cargo!{random_suffix}2026"
+    else:
+        new_password = new_password.strip()
+        if len(new_password) < 6:
+            raise HTTPException(status_code=400, detail="New password must be at least 6 characters long.")
+
+    user.password_hash = hash_password(new_password)
+    user.is_active = True
+    db.commit()
+    db.refresh(user)
+
+    return AdminResetPasswordResponse(
+        status="success",
+        message=f"Password for '{user.email}' successfully reset.",
+        tenant_id=tenant_id,
+        tenant_name=tenant_name,
+        user_id=user.id,
+        user_email=user.email,
+        new_password=new_password,
+    )
+
 
 
 @app.get("/api/v1/admin/logs")

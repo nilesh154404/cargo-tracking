@@ -8,6 +8,7 @@ import {
   onboardNewTenant,
   updateTenantQuota,
   impersonateTenant,
+  resetTenantPassword,
   getCarrierHealthSla,
   getProviderExecutionLogs,
   getAdminUsageLogs,
@@ -64,6 +65,15 @@ export default function SuperadminStaffBackofficePage() {
   const [resetUsage, setResetUsage] = useState(false);
   const [tenantStatusActive, setTenantStatusActive] = useState(true);
   const [quotaLoading, setQuotaLoading] = useState(false);
+
+  // Reset Password Modal State
+  const [resetPwdModalOpen, setResetPwdModalOpen] = useState(false);
+  const [resetPwdTenant, setResetPwdTenant] = useState(null);
+  const [resetPwdUserId, setResetPwdUserId] = useState("");
+  const [resetPwdCustom, setResetPwdCustom] = useState("");
+  const [resetPwdLoading, setResetPwdLoading] = useState(false);
+  const [resetPwdSuccessData, setResetPwdSuccessData] = useState(null);
+  const [resetPwdError, setResetPwdError] = useState("");
 
   // cURL Inspect Modal State
   const [curlModalOpen, setCurlModalOpen] = useState(false);
@@ -122,6 +132,7 @@ export default function SuperadminStaffBackofficePage() {
         setInspectModalOpen(false);
         setOnboardModalOpen(false);
         setQuotaModalOpen(false);
+        setResetPwdModalOpen(false);
         setCurlModalOpen(false);
         setMobileMenuOpen(false);
       }
@@ -258,6 +269,47 @@ export default function SuperadminStaffBackofficePage() {
       showToast(err.message || "Failed to update tenant quota.", "warning");
     } finally {
       setQuotaLoading(false);
+    }
+  };
+
+  const openResetPasswordModal = (tenant) => {
+    setResetPwdTenant(tenant);
+    const defaultUser = tenant?.users?.find((u) => u.role === "ADMIN") || tenant?.users?.[0];
+    setResetPwdUserId(defaultUser ? String(defaultUser.id) : (tenant?.admin_user_id ? String(tenant.admin_user_id) : ""));
+    setResetPwdCustom("");
+    setResetPwdError("");
+    setResetPwdSuccessData(null);
+    setResetPwdModalOpen(true);
+  };
+
+  const handleGenerateRandomPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setResetPwdCustom(`Cargo!${code}2026`);
+  };
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetPwdTenant) return;
+    setResetPwdLoading(true);
+    setResetPwdError("");
+
+    try {
+      const payload = {};
+      if (resetPwdUserId) payload.user_id = parseInt(resetPwdUserId, 10);
+      if (resetPwdCustom.trim()) payload.new_password = resetPwdCustom.trim();
+
+      const res = await resetTenantPassword(resetPwdTenant.id, payload);
+      setResetPwdSuccessData(res);
+      showToast(`Password successfully reset for ${res.user_email}!`, "success");
+    } catch (err) {
+      setResetPwdError(err.message || "Failed to reset tenant password.");
+      showToast(err.message || "Failed to reset tenant password.", "warning");
+    } finally {
+      setResetPwdLoading(false);
     }
   };
 
@@ -645,7 +697,9 @@ export default function SuperadminStaffBackofficePage() {
                       <tr key={t.id}>
                         <td>
                           <div style={{ fontWeight: "700", color: "var(--text-main)" }}>{t.name}</div>
-                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>ID: {t.id}</div>
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                            ID: {t.id} {t.admin_email ? `• ${t.admin_email}` : ""}
+                          </div>
                         </td>
                         <td style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem" }}>{t.slug}</td>
                         <td>
@@ -671,7 +725,7 @@ export default function SuperadminStaffBackofficePage() {
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: "flex", gap: "0.4rem" }}>
+                          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
                             <button
                               onClick={() => {
                                 setSelectedTenant(t);
@@ -681,6 +735,14 @@ export default function SuperadminStaffBackofficePage() {
                               className="btn btn-secondary btn-sm"
                             >
                               Adjust Quota
+                            </button>
+                            <button
+                              onClick={() => openResetPasswordModal(t)}
+                              className="btn btn-outline btn-sm"
+                              style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", color: "var(--accent-blue)" }}
+                              title="Reset tenant admin or user password"
+                            >
+                              <span>🔑</span> Reset Pwd
                             </button>
                             <button
                               onClick={() => handleImpersonate(t.id)}
@@ -1227,6 +1289,159 @@ export default function SuperadminStaffBackofficePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RESET TENANT PASSWORD */}
+      {resetPwdModalOpen && resetPwdTenant && (
+        <div className="modal-backdrop">
+          <div className="modal-card" style={{ maxWidth: "520px" }}>
+            <div className="modal-header">
+              <h3 className="modal-title"><span>🔑</span> Superadmin: Reset Password</h3>
+              <button className="modal-close" onClick={() => { setResetPwdModalOpen(false); setResetPwdSuccessData(null); }}>&times;</button>
+            </div>
+
+            {!resetPwdSuccessData ? (
+              <form onSubmit={handleResetPasswordSubmit}>
+                <div style={{ background: "var(--bg-secondary)", padding: "1rem", borderRadius: "8px", marginBottom: "1.25rem", fontSize: "0.85rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.35rem" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Target Organization:</span>
+                    <strong>{resetPwdTenant.name}</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Tenant Slug:</span>
+                    <code style={{ fontFamily: "var(--font-mono)" }}>{resetPwdTenant.slug}</code>
+                  </div>
+                </div>
+
+                {resetPwdError && (
+                  <div style={{ padding: "0.75rem", background: "#fef2f2", color: "#b91c1c", borderRadius: "6px", fontSize: "0.85rem", marginBottom: "1rem" }}>
+                    {resetPwdError}
+                  </div>
+                )}
+
+                {/* Target User Selector */}
+                <div className="form-group">
+                  <label className="form-label">Select Tenant User Account</label>
+                  {resetPwdTenant.users && resetPwdTenant.users.length > 0 ? (
+                    <select
+                      className="form-select"
+                      value={resetPwdUserId}
+                      onChange={(e) => setResetPwdUserId(e.target.value)}
+                    >
+                      {resetPwdTenant.users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.email} ({u.role || "USER"}{u.full_name ? ` - ${u.full_name}` : ""})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      className="form-input"
+                      disabled
+                      value={resetPwdTenant.admin_email || "Default Admin Account"}
+                    />
+                  )}
+                  <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.35rem" }}>
+                    The target user credentials in this tenant will be updated immediately.
+                  </p>
+                </div>
+
+                {/* Custom / Auto-generate Password */}
+                <div className="form-group">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+                    <label className="form-label" style={{ margin: 0 }}>New Password (Optional)</label>
+                    <button
+                      type="button"
+                      onClick={handleGenerateRandomPassword}
+                      className="btn btn-outline btn-sm"
+                      style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+                    >
+                      ⚡ Auto-Generate
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Leave blank to auto-generate secure password"
+                    value={resetPwdCustom}
+                    onChange={(e) => setResetPwdCustom(e.target.value)}
+                  />
+                  <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.35rem" }}>
+                    Minimum 6 characters. If left empty, a high-entropy temporary password will be securely created.
+                  </p>
+                </div>
+
+                <div className="modal-footer" style={{ marginTop: "1.5rem" }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => { setResetPwdModalOpen(false); setResetPwdSuccessData(null); }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resetPwdLoading}
+                    className="btn btn-primary"
+                    style={{ background: "#4f46e5", borderColor: "#4338ca" }}
+                  >
+                    {resetPwdLoading ? "Resetting..." : "Confirm Password Reset"}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div style={{ textAlign: "center", padding: "1rem 0" }}>
+                <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>🔐</div>
+                <h4 style={{ fontSize: "1.25rem", fontWeight: "800", color: "var(--text-main)", marginBottom: "0.5rem" }}>
+                  Password Reset Successful!
+                </h4>
+                <p style={{ fontSize: "0.88rem", color: "var(--text-muted)", marginBottom: "1.25rem" }}>
+                  The password for <strong>{resetPwdSuccessData.user_email}</strong> ({resetPwdSuccessData.tenant_name}) has been reset.
+                </p>
+
+                <div style={{ textAlign: "left", marginBottom: "0.5rem", fontSize: "0.82rem", fontWeight: "700", color: "var(--text-secondary)" }}>
+                  New Temporary Access Password:
+                </div>
+
+                <div className="secret-reveal-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f1f5f9", padding: "0.85rem 1rem", borderRadius: "8px", border: "1px dashed #cbd5e1" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: "700", fontSize: "1.05rem", color: "#0f172a" }}>
+                    {resetPwdSuccessData.temporary_password}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (resetPwdSuccessData.temporary_password) {
+                        navigator.clipboard.writeText(resetPwdSuccessData.temporary_password);
+                        showToast("Temporary password copied to clipboard!", "success");
+                      }
+                    }}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Copy
+                  </button>
+                </div>
+
+                <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "1rem" }}>
+                  Please share this temporary password with the tenant administrator securely. They can now log in via the Tenant Portal.
+                </p>
+
+                <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "center", gap: "0.75rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetPwdModalOpen(false);
+                      setResetPwdSuccessData(null);
+                    }}
+                    className="btn btn-primary"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
