@@ -120,7 +120,8 @@ class AfcomCargoProvider(BaseProvider):
                     
                 latest_event = events[-1] if events else None
                 total_pieces = latest_event.get("pieces") if latest_event else None
-                total_weight = latest_event.get("weight") if latest_event else None
+                raw_weight = latest_event.get("weight") if latest_event else None
+                total_weight = {"value": float(raw_weight), "unit": "kg"} if raw_weight is not None else None
 
                 return ProviderResult(
                     success=True,

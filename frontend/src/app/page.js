@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { loginUser, registerOrganization, STORAGE_KEYS } from "@/lib/api";
+import { loginUser, registerOrganization, trackShipment, STORAGE_KEYS } from "@/lib/api";
 import { CONTAINER_SAMPLES, getMockContainerTelemetry } from "@/lib/mockContainers";
 import { useToast } from "@/components/Toast";
 
@@ -13,6 +13,8 @@ export default function MarketingHomePage() {
   const [containerTelemetry, setContainerTelemetry] = useState(() => getMockContainerTelemetry("MSMU6484830"));
   const [formatMode, setFormatMode] = useState("split"); // "split" | "standard" | "mobile" | "timeline"
   const [copiedFormat, setCopiedFormat] = useState(null);
+  const [isTracking, setIsTracking] = useState(false);
+  const [trackError, setTrackError] = useState("");
 
   // Auth & Session state
   const [currentUser, setCurrentUser] = useState(null);
@@ -51,11 +53,48 @@ export default function MarketingHomePage() {
     setContainerTelemetry(initial);
   }, []);
 
-  const handleTrackSubmit = (numToTrack = trackingNumber) => {
+  const handleTrackSubmit = async (numToTrack = trackingNumber) => {
     const num = String(numToTrack || "MSMU6484830").trim().toUpperCase();
     setTrackingNumber(num);
-    const telemetry = getMockContainerTelemetry(num);
-    setContainerTelemetry(telemetry);
+    setTrackError("");
+    setIsTracking(true);
+
+    try {
+      // Use demo API key if user is not logged in
+      const token = typeof window !== "undefined" ? localStorage.getItem("cargotrk_auth_token") : null;
+      const apiKey = token ? null : "cargotrk_live_defaultdemo00000000000000000";
+      const liveData = await trackShipment(num, apiKey);
+
+      // Build the telemetry object the UI expects (standard + mobileApp)
+      const mobileApp = {
+        tracking_number: liveData.tracking_number,
+        mode: liveData.mode,
+        status: liveData.status,
+        carrier_code: liveData.carrier?.code,
+        carrier_name: liveData.carrier?.name,
+        origin: liveData.origin,
+        destination: liveData.destination,
+        events: (liveData.events || []).map((ev) => ({
+          status: ev.status_message || ev.status_code,
+          location: ev.station,
+          timestamp: ev.event_time,
+          flight_info: ev.flight_info,
+        })),
+      };
+
+      setContainerTelemetry({
+        standard: liveData,
+        mobileApp: mobileApp,
+      });
+    } catch (err) {
+      console.warn("Live tracking failed, falling back to mock data:", err.message);
+      setTrackError(err.message || "Tracking failed");
+      // Fallback to mock data so the UI still renders something
+      const telemetry = getMockContainerTelemetry(num);
+      setContainerTelemetry(telemetry);
+    } finally {
+      setIsTracking(false);
+    }
   };
 
   const copyToClipboard = (data, type) => {
@@ -238,7 +277,7 @@ export default function MarketingHomePage() {
                 className="btn btn-primary btn-lg"
                 style={{ height: "56px", minWidth: "180px", fontSize: "1rem", fontWeight: "700" }}
               >
-                Track Container ➔
+                {isTracking ? "⏳ Tracking..." : "Track Container ➔"}
               </button>
             </div>
 
@@ -269,8 +308,13 @@ export default function MarketingHomePage() {
             </div>
 
             <div style={{ marginTop: "1rem", fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-              <span>⚡ <strong>Instant Client Mock Telemetry:</strong> Zero API key or network calls required · Inspect real Standard &amp; Mobile-App payloads.</span>
+              <span>⚡ <strong>Live Backend Tracking:</strong> Enter any AWB or Container number to track via real carrier APIs with automated fallback.</span>
             </div>
+            {trackError && (
+              <div style={{ marginTop: "0.75rem", padding: "0.6rem 1rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "var(--radius-md)", color: "#b91c1c", fontSize: "0.85rem", textAlign: "center" }}>
+                ⚠️ {trackError} — Showing cached/mock data below.
+              </div>
+            )}
 
             {/* Dual Payload & Tracking Overview Display Box */}
             {containerTelemetry && (
