@@ -1,10 +1,11 @@
 import asyncio
 import logging
+import math
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status, Body
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, desc
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -1132,6 +1133,70 @@ async def check_providers_health():
         "total_providers": len(health_results),
         "providers": health_results,
     }
+
+
+@app.get("/api/v1/provider-execution-logs")
+def get_provider_execution_logs(
+    provider_name: Optional[str] = Query(None, description="Filter by provider name (e.g. 'cathay_cargo', 'ldb_container')"),
+    status: Optional[str] = Query(None, description="Filter by execution status ('SUCCESS', 'FAILED', 'FALLBACK')"),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(20, ge=1, le=100, description="Number of records per page (max 100)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve provider execution logs from the database with pagination.
+    Results include provider name and are ordered by id and created_at descending.
+    """
+    # Base query
+    query = select(ProviderExecutionLog)
+    count_query = select(func.count(ProviderExecutionLog.id))
+
+    # Apply filters
+    if provider_name:
+        query = query.where(ProviderExecutionLog.provider_name == provider_name)
+        count_query = count_query.where(ProviderExecutionLog.provider_name == provider_name)
+
+    if status:
+        query = query.where(ProviderExecutionLog.status == status.upper())
+        count_query = count_query.where(ProviderExecutionLog.status == status.upper())
+
+    # Get total count for pagination metadata
+    total_count = db.execute(count_query).scalar() or 0
+    total_pages = math.ceil(total_count / page_size) if total_count > 0 else 0
+
+    # Apply ordering: by id DESC, then created_at DESC
+    query = query.order_by(
+        desc(ProviderExecutionLog.id),
+        desc(ProviderExecutionLog.created_at),
+    )
+
+    # Apply pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
+    logs = db.execute(query).scalars().all()
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_count": total_count,
+        "total_pages": total_pages,
+        "data": [
+            {
+                "id": log.id,
+                "shipment_id": log.shipment_id,
+                "tracking_number": log.tracking_number,
+                "provider_name": log.provider_name,
+                "status": log.status,
+                "http_status_code": log.http_status_code,
+                "error_message": log.error_message,
+                "latency_ms": log.latency_ms,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
+        ],
+    }
+
 
 
 @app.get("/api/v1/cathay/token")
