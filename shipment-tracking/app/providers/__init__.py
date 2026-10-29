@@ -33,6 +33,7 @@ from app.providers.sea.msc import MscProvider
 from app.providers.sea.ldb_container import LdbContainerProvider
 from app.providers.sea.one_line import OneLineProvider
 from app.providers.sea.track_trace import TrackTraceProvider
+from app.providers.sea.containertracking_net import ContainerTrackingNetProvider
 from app.providers.sea.generic_ocean import GenericOceanProvider
 
 _ldb_instance = LdbContainerProvider()
@@ -72,6 +73,7 @@ _REGISTRY: Dict[str, BaseProvider] = {
     "ldb_container": _ldb_instance,
     "one_line": _one_line_instance,
     "track_trace": TrackTraceProvider(),
+    "containertracking_net": ContainerTrackingNetProvider(),
     "generic_ocean": GenericOceanProvider(),
 }
 

@@ -83,6 +83,21 @@ export default function TrackingInspectionModal({
     String(status).toUpperCase().includes("DEPART") ||
     String(status).toUpperCase().includes("SAIL");
 
+  const modalPopup =
+    data?.standard?.raw_data?.modal_popup ||
+    data?.raw_data?.modal_popup ||
+    logItem?.raw_data?.modal_popup ||
+    (mode === "SEA" && trackingNumber && trackingNumber !== "--"
+      ? {
+          title: `📍 ${carrierName} — ${trackingNumber}`,
+          carrier: carrierName,
+          container: trackingNumber,
+          official_url: `https://containertracking.net/track/${String(trackingNumber).slice(0, 4).toLowerCase()}.html`,
+          containertracking_url: `https://containertracking.net/track/${String(trackingNumber).slice(0, 4).toLowerCase()}.html`,
+          tracktainer_url: `https://tracktainer.com/?container=${trackingNumber}`,
+        }
+      : null);
+
   return (
     <div
       className="modal-backdrop"
@@ -199,6 +214,83 @@ export default function TrackingInspectionModal({
               {/* VIEW 1: TIMELINE & MILESTONES */}
               {activeView === "timeline" && (
                 <div>
+                  {modalPopup && (
+                    <div
+                      style={{
+                        background: "#f0fdf4",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: "var(--radius-md)",
+                        padding: "0.85rem 1.15rem",
+                        marginBottom: "1rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: "0.75rem",
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <span style={{ fontSize: "1rem" }}>🌐</span>
+                          <span style={{ fontWeight: "700", color: "#166534", fontSize: "0.88rem" }}>
+                            {modalPopup.title || `Container Tracking Gateway (${carrierName})`}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "0.68rem",
+                              background: "#dcfce7",
+                              color: "#15803d",
+                              padding: "2px 7px",
+                              borderRadius: "999px",
+                              fontWeight: "600",
+                            }}
+                          >
+                            containertracking.net verified
+                          </span>
+                        </div>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "0.75rem", color: "#15803d" }}>
+                          Direct carrier tracking portal & multi-gateway links for container {trackingNumber}.
+                        </p>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                        {modalPopup.official_url && (
+                          <a
+                            href={modalPopup.official_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-primary btn-sm"
+                            style={{ fontSize: "0.74rem", padding: "0.25rem 0.65rem", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                          >
+                            🚀 Open Carrier Portal ↗
+                          </a>
+                        )}
+                        {modalPopup.containertracking_url && (
+                          <a
+                            href={modalPopup.containertracking_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: "0.74rem", padding: "0.25rem 0.65rem", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                          >
+                            🔍 containertracking.net ↗
+                          </a>
+                        )}
+                        {modalPopup.tracktainer_url && (
+                          <a
+                            href={modalPopup.tracktainer_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: "0.74rem", padding: "0.25rem 0.65rem", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                          >
+                            📦 TrackTainer ↗
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Route Summary Card */}
                   <div
                     style={{

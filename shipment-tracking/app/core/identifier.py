@@ -269,14 +269,14 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
     "CMAU": {
         "carrier_code": "CMA",
         "name": "CMA CGM",
-        "primary_provider": "generic_ocean",
-        "fallback_providers": "",
+        "primary_provider": "containertracking_net",
+        "fallback_providers": "generic_ocean",
     },
     "HLCU": {
         "carrier_code": "HAP",
         "name": "Hapag-Lloyd",
-        "primary_provider": "generic_ocean",
-        "fallback_providers": "",
+        "primary_provider": "containertracking_net",
+        "fallback_providers": "generic_ocean",
     },
     "ONEU": {
         "carrier_code": "ONE",
@@ -291,6 +291,21 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
         "fallback_providers": "ldb_container,generic_ocean",
     },
 }
+
+# Dynamically populate all known container prefixes from containertracking.net database
+try:
+    from app.core.container_prefixes_data import PREFIX_DB
+    for pfx, info in PREFIX_DB.items():
+        if pfx not in SEA_CONTAINER_PREFIX_MAP:
+            slug = info.get("slug") or f"SEA_{pfx}"
+            SEA_CONTAINER_PREFIX_MAP[pfx] = {
+                "carrier_code": slug.upper()[:10],
+                "name": info.get("carrier") or f"Shipping Line ({pfx})",
+                "primary_provider": "containertracking_net",
+                "fallback_providers": "generic_ocean",
+            }
+except Exception:
+    pass
 
 
 LIVE_SUPPORTED_AIR_PROVIDERS = {
@@ -322,7 +337,15 @@ LIVE_SUPPORTED_AIR_PROVIDERS = {
     "virgin_atlantic_cargo",
     "emirates_skycargo",
 }
-LIVE_SUPPORTED_SEA_PROVIDERS = {"msc", "ldb_container", "one_line", "maersk", "track_trace"}
+LIVE_SUPPORTED_SEA_PROVIDERS = {
+    "msc",
+    "ldb_container",
+    "one_line",
+    "maersk",
+    "track_trace",
+    "containertracking_net",
+    "generic_ocean",
+}
 
 
 class IdentificationResult:
@@ -451,8 +474,8 @@ def parse_and_identify(
                 {
                     "carrier_code": f"SEA_{prefix}",
                     "name": f"Shipping Line ({prefix})",
-                    "primary_provider": "generic_ocean",
-                    "fallback_providers": "",
+                    "primary_provider": "containertracking_net",
+                    "fallback_providers": "generic_ocean",
                 },
             )
             fallbacks = [

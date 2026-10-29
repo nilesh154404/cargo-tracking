@@ -1,11 +1,20 @@
 import time
 from typing import Optional
 from app.providers.base import BaseProvider, ProviderResult
+from app.providers.sea.containertracking_net import ContainerTrackingNetProvider
 
 
 class GenericOceanProvider(BaseProvider):
+    """
+    Generic Ocean Container Provider.
+    Delegates to ContainerTrackingNetProvider (https://containertracking.net/)
+    to provide universal global coverage across 310+ shipping lines and leasing companies.
+    """
     name = "generic_ocean"
     mode = "SEA"
+
+    def __init__(self):
+        self._containertracking = ContainerTrackingNetProvider()
 
     async def track(
         self,
@@ -14,18 +23,16 @@ class GenericOceanProvider(BaseProvider):
         tracking_number: str,
         language: str = "en-us",
         force_refresh: bool = False,
+        **kwargs,
     ) -> ProviderResult:
-        start_time = time.time()
-        latency = round((time.time() - start_time) * 1000 + 10, 2)
-
-        return ProviderResult(
-            success=False,
-            provider_name=self.name,
-            status_code=404,
-            status="SHIPPING_LINE_NOT_SUPPORTED",
-            error=f"Shipping line not supported: Container prefix '{prefix}' is not currently integrated for live tracking.",
-            events=[],
-            latest_event=None,
-            raw_data={"source": "Ocean Container Gateway", "tracking_number": tracking_number},
-            latency_ms=latency,
+        result = await self._containertracking.track(
+            prefix=prefix,
+            serial=serial,
+            tracking_number=tracking_number,
+            language=language,
+            force_refresh=force_refresh,
+            **kwargs,
         )
+        # Attribute provider name to generic_ocean for execution trail clarity
+        result.provider_name = self.name
+        return result
