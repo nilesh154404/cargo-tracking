@@ -445,6 +445,16 @@ class TrackingOrchestratorAgent:
         orig_match = match_location(successful_result.origin, route_plan.mode) if (successful_result and successful_result.origin) else None
         dest_match = match_location(successful_result.destination, route_plan.mode) if (successful_result and successful_result.destination) else None
 
+        resp_raw_data = dict(successful_result.raw_data) if (successful_result and successful_result.raw_data) else {}
+        if route_plan.mode == "SEA" and route_plan.clean_tracking_number:
+            try:
+                from app.core.container_prefixes_data import get_containertracking_metadata
+                meta = get_containertracking_metadata(route_plan.clean_tracking_number)
+                if "modal_popup" not in resp_raw_data:
+                    resp_raw_data["modal_popup"] = meta.get("modal_popup")
+            except Exception:
+                pass
+
         return UnifiedTrackingResponse(
             tracking_number=route_plan.clean_tracking_number,
             mode=route_plan.mode,
@@ -475,11 +485,11 @@ class TrackingOrchestratorAgent:
                 attempts=attempts,
                 final_provider_used=final_provider_used,
             ),
-            raw_data=successful_result.raw_data if successful_result else None,
-            containers=successful_result.raw_data.get("containers") if (successful_result and successful_result.raw_data) else None,
+            raw_data=resp_raw_data if resp_raw_data else None,
+            containers=resp_raw_data.get("containers"),
             mawb_obl_no=mawb_obl_no,
             container_no=container_no,
             hawb_hbl_no=hawb_hbl_no,
-            vessel_name=vessel_name or (successful_result.raw_data.get("vessel_name") if successful_result and successful_result.raw_data else None),
+            vessel_name=vessel_name or resp_raw_data.get("vessel_name"),
             flight_no=flight_no,
         )

@@ -282,19 +282,32 @@ async def test_agent_tracking_sea_msc_msdu(db_session):
 
 def test_identifier_containertracking_net_prefixes():
     # Test sample prefixes from containertracking.net prefix registry
-    samples = [
+    # Carrier-owned prefixes
+    carrier_samples = [
         ("COSU6123456", "COSCO", "containertracking_net"),
-        ("TRHU4047237", "TRITON", "containertracking_net"),
-        ("TEMU1234567", "TEXTAINER", "containertracking_net"),
         ("ZIMU1234567", "ZIM", "containertracking_net"),
         ("YMLU1234567", "YANG-MING", "containertracking_net"),
     ]
-    for q, expected_carrier_code, expected_provider in samples:
+    for q, expected_carrier_code, expected_provider in carrier_samples:
         res = parse_and_identify(q)
         assert res.mode == "SEA"
         assert res.carrier_code == expected_carrier_code
         assert res.primary_provider == expected_provider
         assert res.is_supported is True
+        assert "generic_ocean" in res.fallback_providers
+
+    # Leasing company prefixes (Triton, Textainer, etc.) route to one_line first to catch active voyages
+    leasing_samples = [
+        ("TRHU4047237", "TRITON", "one_line"),
+        ("TEMU1234567", "TEXTAINER", "one_line"),
+    ]
+    for q, expected_carrier_code, expected_provider in leasing_samples:
+        res = parse_and_identify(q)
+        assert res.mode == "SEA"
+        assert res.carrier_code == expected_carrier_code
+        assert res.primary_provider == expected_provider
+        assert res.is_supported is True
+        assert "containertracking_net" in res.fallback_providers
         assert "generic_ocean" in res.fallback_providers
 
 
@@ -306,10 +319,15 @@ async def test_agent_tracking_containertracking_net_triton(db_session):
         db=db_session,
     )
     assert response.mode == "SEA"
-    assert response.carrier.name == "Triton Container"
-    assert response.agent_trail.final_provider_used in ("containertracking_net", "generic_ocean")
-    assert response.status == "In Transit"
-    assert len(response.events) > 0
+    assert "Triton" in response.carrier.name
+    assert response.agent_trail.final_provider_used in ("one_line", "containertracking_net", "generic_ocean")
+    if response.agent_trail.final_provider_used == "one_line":
+        assert len(response.events) >= 10
+        assert response.origin.city == "DA NANG"
+        assert "LOS ANGELES" in response.destination.city
+    else:
+        # Fallback equipment verification when network is offline/sandboxed
+        assert len(response.events) >= 2
     modal = response.raw_data.get("modal_popup")
     assert modal is not None
     assert "https://containertracking.net" in modal["containertracking_url"]

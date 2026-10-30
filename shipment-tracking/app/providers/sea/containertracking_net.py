@@ -68,38 +68,115 @@ class ContainerTrackingNetProvider(BaseProvider):
         equipment_type = meta["equipment_type"]
         country = meta["country"]
 
-        # Build normalized milestone events
+        # 1. Attempt live container tracking via ONE Line, LDB, Track-Trace
+        try:
+            from app.providers.sea.one_line import OneLineProvider
+            one_prov = OneLineProvider()
+            one_res = await one_prov.track(
+                prefix=prefix,
+                serial=serial,
+                tracking_number=container_num,
+                language=language,
+                force_refresh=force_refresh,
+                **kwargs,
+            )
+            if one_res.success and one_res.events and len(one_res.events) > 0:
+                raw_data = {
+                    **(one_res.raw_data or {}),
+                    "source": "ContainerTracking.net Gateway (via ONE Line)",
+                    "container_number": container_num,
+                    "equipment_type": equipment_type,
+                    "is_check_digit_valid": meta["is_check_digit_valid"],
+                    "official_tracking_url": meta["official_tracking_url"],
+                    "containertracking_net_url": meta["containertracking_net_url"],
+                    "tracktainer_url": meta["tracktainer_url"],
+                    "modal_popup": meta["modal_popup"],
+                }
+                return ProviderResult(
+                    success=True,
+                    provider_name=self.name,
+                    status_code=one_res.status_code or 200,
+                    status=one_res.status,
+                    origin=one_res.origin,
+                    destination=one_res.destination,
+                    pieces=one_res.pieces or 1,
+                    weight=one_res.weight,
+                    volume=one_res.volume or (76.2 if "40" in equipment_type else 33.2),
+                    events=one_res.events,
+                    latest_event=one_res.latest_event,
+                    raw_data=raw_data,
+                    request_curl=one_res.request_curl or request_curl,
+                    response_body=one_res.response_body,
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                )
+        except Exception as exc:
+            logger.debug(f"Live ONE Line lookup check notice: {exc}")
+
+        try:
+            from app.providers.sea.ldb_container import LdbContainerProvider
+            ldb_prov = LdbContainerProvider()
+            ldb_res = await ldb_prov.track(
+                prefix=prefix,
+                serial=serial,
+                tracking_number=container_num,
+                language=language,
+                force_refresh=force_refresh,
+                **kwargs,
+            )
+            if ldb_res.success and ldb_res.events and len(ldb_res.events) > 0:
+                raw_data = {
+                    **(ldb_res.raw_data or {}),
+                    "source": "ContainerTracking.net Gateway (via LDB)",
+                    "container_number": container_num,
+                    "equipment_type": equipment_type,
+                    "is_check_digit_valid": meta["is_check_digit_valid"],
+                    "official_tracking_url": meta["official_tracking_url"],
+                    "containertracking_net_url": meta["containertracking_net_url"],
+                    "tracktainer_url": meta["tracktainer_url"],
+                    "modal_popup": meta["modal_popup"],
+                }
+                return ProviderResult(
+                    success=True,
+                    provider_name=self.name,
+                    status_code=ldb_res.status_code or 200,
+                    status=ldb_res.status,
+                    origin=ldb_res.origin,
+                    destination=ldb_res.destination,
+                    pieces=ldb_res.pieces or 1,
+                    weight=ldb_res.weight,
+                    volume=ldb_res.volume or (76.2 if "40" in equipment_type else 33.2),
+                    events=ldb_res.events,
+                    latest_event=ldb_res.latest_event,
+                    raw_data=raw_data,
+                    request_curl=ldb_res.request_curl or request_curl,
+                    response_body=ldb_res.response_body,
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                )
+        except Exception as exc:
+            logger.debug(f"Live LDB lookup check notice: {exc}")
+
+        # 2. Build verified equipment status when no active carrier milestones exist
         now_dt = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         events = [
             {
-                "station": country if country != "International" else "Ocean Gateway",
+                "station": country if country != "International" else "Container Registry",
                 "status_code": "INFO",
-                "status_message": f"Container {container_num} active ({carrier_name} - {equipment_type})",
-                "event_time": now_dt,
-                "flight_info": f"Line: {carrier_name}",
-                "pieces": 1,
-                "weight": None,
-                "raw_status": "Active",
-            },
-            {
-                "station": country if country != "International" else "Port of Loading",
-                "status_code": "GT_IN",
-                "status_message": f"Gate-In / Equipment Allocated by {carrier_name}",
-                "event_time": now_dt,
-                "flight_info": None,
-                "pieces": 1,
-                "weight": None,
-                "raw_status": "Gate-In",
-            },
-            {
-                "station": "Ocean Transit",
-                "status_code": "DEP",
-                "status_message": f"In-Transit via {carrier_name} Network",
+                "status_message": f"Container {container_num} registered ({carrier_name} - {equipment_type})",
                 "event_time": now_dt,
                 "flight_info": f"Carrier: {carrier_name}",
                 "pieces": 1,
                 "weight": None,
-                "raw_status": "Vessel Transit",
+                "raw_status": "Registered",
+            },
+            {
+                "station": "ISO 6346 Registry",
+                "status_code": "VERIFIED",
+                "status_message": f"ISO 6346 Check Digit Verified: {'Valid' if meta['is_check_digit_valid'] else 'Mismatch'}",
+                "event_time": now_dt,
+                "flight_info": None,
+                "pieces": 1,
+                "weight": None,
+                "raw_status": "Verified",
             },
         ]
 
