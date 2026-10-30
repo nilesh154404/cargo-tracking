@@ -121,7 +121,7 @@ async def test_agent_tracking_containertracking_net_hlcu(db_session):
     )
     assert response.mode == "SEA"
     assert response.carrier.name == "Hapag-Lloyd"
-    assert response.agent_trail.final_provider_used in ("containertracking_net", "generic_ocean")
+    assert response.agent_trail.final_provider_used in ("hapag_lloyd", "containertracking_net", "generic_ocean")
     assert response.status == "In Transit"
     assert len(response.events) > 0
     assert response.raw_data.get("modal_popup") is not None
@@ -331,6 +331,35 @@ async def test_agent_tracking_containertracking_net_triton(db_session):
     modal = response.raw_data.get("modal_popup")
     assert modal is not None
     assert "https://containertracking.net" in modal["containertracking_url"]
+
+
+def test_identifier_hapag_lloyd_dayu():
+    res = parse_and_identify("DAYU6129689")
+    assert res.mode == "SEA"
+    assert res.carrier_code == "HAPAG_LLOY"
+    assert res.carrier_name == "Hapag-Lloyd"
+    assert res.primary_provider == "hapag_lloyd"
+    assert res.is_supported is True
+    assert "ldb_container" in res.fallback_providers
+
+
+@pytest.mark.asyncio
+async def test_agent_tracking_hapag_lloyd_dayu(db_session):
+    orchestrator = TrackingOrchestratorAgent()
+    response = await orchestrator.execute_tracking(
+        query="DAYU6129689",
+        db=db_session,
+    )
+    assert response.mode == "SEA"
+    assert response.carrier.name == "Hapag-Lloyd"
+    assert response.carrier.code == "HAPAG_LLOY"
+    assert response.agent_trail.final_provider_used in ("hapag_lloyd", "ldb_container", "generic_ocean")
+    assert len(response.events) >= 2
+    modal = response.raw_data.get("modal_popup")
+    assert modal is not None
+    assert "https://www.hapag-lloyd.com/solutions/tracking/#/DAYU6129689" in modal["official_tracking_url"]
+    assert "https://containertracking.net" in modal["containertracking_url"]
+
 
 
 

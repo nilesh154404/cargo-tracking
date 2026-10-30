@@ -325,6 +325,14 @@ def seed_default_carriers(session: Session):
             "primary_provider": "one_line",
             "fallback_providers": "ldb_container,generic_ocean",
         },
+        {
+            "code": "HAPAG_LLOY",
+            "prefix": "DAYU,HLBU,HLCU,HLHU,HLXU,UACU,UAEU",
+            "name": "Hapag-Lloyd",
+            "mode": "SEA",
+            "primary_provider": "hapag_lloyd",
+            "fallback_providers": "ldb_container,track_trace,containertracking_net,generic_ocean",
+        },
     ]
 
     try:
@@ -356,7 +364,7 @@ def seed_default_carriers(session: Session):
 
             for c_name, grp in carrier_groups.items():
                 code = grp["slug"]
-                if code in ("MSK", "MSC", "ONE", "MAERSK"):
+                if code in ("MSK", "MSC", "ONE", "MAERSK", "HAPAG_LLOY"):
                     continue
                 prefixes_str = ",".join(sorted(grp["prefixes"]))[:500]
                 existing = session.execute(

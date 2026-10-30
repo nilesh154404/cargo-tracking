@@ -35,6 +35,7 @@ from app.providers.sea.one_line import OneLineProvider
 from app.providers.sea.track_trace import TrackTraceProvider
 from app.providers.sea.containertracking_net import ContainerTrackingNetProvider
 from app.providers.sea.generic_ocean import GenericOceanProvider
+from app.providers.sea.hapag_lloyd import HapagLloydProvider
 
 _ldb_instance = LdbContainerProvider()
 _one_line_instance = OneLineProvider()
@@ -75,6 +76,7 @@ _REGISTRY: Dict[str, BaseProvider] = {
     "track_trace": TrackTraceProvider(),
     "containertracking_net": ContainerTrackingNetProvider(),
     "generic_ocean": GenericOceanProvider(),
+    "hapag_lloyd": HapagLloydProvider(),
 }
 
 

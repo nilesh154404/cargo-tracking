@@ -2209,7 +2209,7 @@ CARRIER_INFO = {
   "hapag-lloyd": {
     "slug": "hapag-lloyd",
     "name": "Hapag-Lloyd",
-    "track_url": "https://www.hapag-lloyd.com/en/online-business/track/track-by-container-solution.html?container={NUMBER}",
+    "track_url": "https://www.hapag-lloyd.com/solutions/tracking/#/{NUMBER}",
     "allows_iframe": False
   },
   "evergreen": {
@@ -2571,6 +2571,18 @@ def get_containertracking_metadata(container_num: str):
     containertracking_url = f"https://containertracking.net/track/{prefix.lower()}.html"
     tracktainer_url = f"https://tracktainer.com/?container={cleaned}"
 
+    modal_popup = {
+        "carrier_name": pref_info.get("carrier", f"Shipping Line ({prefix})"),
+        "carrier_slug": slug,
+        "official_tracking_url": track_url,
+        "direct_tracking_url": track_url,
+        "containertracking_url": f"https://containertracking.net/track/{prefix.lower()}.html?c={cleaned}",
+        "tracktainer_url": tracktainer_url,
+        "supports_iframe": c_info.get("allows_iframe", False),
+        "tracking_number": cleaned,
+        "title": f"{pref_info.get('carrier', 'Container')} Tracking: {cleaned}",
+    }
+
     return {
         "container_number": cleaned,
         "prefix": prefix,
@@ -2586,4 +2598,5 @@ def get_containertracking_metadata(container_num: str):
         "containertracking_net_url": containertracking_url,
         "tracktainer_url": tracktainer_url,
         "allows_iframe": c_info.get("allows_iframe", False),
+        "modal_popup": modal_popup,
     }
