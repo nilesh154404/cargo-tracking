@@ -307,6 +307,11 @@ class MobileAppEvent(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     locationName: Optional[str] = None
+    active: bool = False
+    is_active: bool = False
+    isActive: bool = False
+    raw_status: Optional[str] = None
+    rawStatus: Optional[str] = None
 
 
 class MobileAppResponse(BaseModel):
@@ -327,6 +332,10 @@ class MobileAppResponse(BaseModel):
     latestEvent: Optional[str] = None
     latestStation: Optional[str] = None
     latestTime: Optional[str] = None
+    latestRawStatus: Optional[str] = None
+    latestActive: Optional[bool] = None
+    latest_event: Optional[Dict[str, Any]] = None
+    latestEventObject: Optional[Dict[str, Any]] = None
     events: List[MobileAppEvent] = []
 
 
@@ -337,6 +346,8 @@ def to_mobile_app_response(resp: UnifiedTrackingResponse) -> dict:
     mobile_events = []
     for ev in sorted_events:
         coords = ev.coordinates.model_dump() if ev.coordinates else None
+        is_act = bool(getattr(ev, "active", False) or getattr(ev, "is_active", False))
+        r_status = getattr(ev, "raw_status", None)
         mobile_events.append(MobileAppEvent(
             station=ev.station,
             status=ev.status_message,
@@ -348,6 +359,11 @@ def to_mobile_app_response(resp: UnifiedTrackingResponse) -> dict:
             lat=coords.get("lat") if coords else None,
             lng=coords.get("lng") if coords else None,
             locationName=coords.get("matched_name") if coords else None,
+            active=is_act,
+            is_active=is_act,
+            isActive=is_act,
+            raw_status=r_status,
+            rawStatus=r_status,
         ).model_dump())
 
     # Extract weight value and unit from the nested dict
@@ -359,6 +375,34 @@ def to_mobile_app_response(resp: UnifiedTrackingResponse) -> dict:
 
     # Remove hyphen from AWB number
     awb_number = resp.tracking_number.replace("-", "")
+
+    latest_ev_dict = None
+    latest_raw_status = None
+    if resp.latest_event:
+        latest_coords = resp.latest_event.coordinates.model_dump() if resp.latest_event.coordinates else None
+        latest_raw_status = getattr(resp.latest_event, "raw_status", None)
+        latest_ev_dict = {
+            "station": resp.latest_event.station,
+            "status_code": resp.latest_event.status_code,
+            "statusCode": resp.latest_event.status_code,
+            "status_message": resp.latest_event.status_message,
+            "status": resp.latest_event.status_message,
+            "event_time": resp.latest_event.event_time.isoformat() if resp.latest_event.event_time else None,
+            "time": resp.latest_event.event_time.isoformat() if resp.latest_event.event_time else None,
+            "flight_info": resp.latest_event.flight_info,
+            "flight": resp.latest_event.flight_info,
+            "pieces": str(resp.latest_event.pieces) if resp.latest_event.pieces is not None else None,
+            "weight": str(resp.latest_event.weight) if resp.latest_event.weight is not None else None,
+            "raw_status": latest_raw_status or "ACTUAL",
+            "rawStatus": latest_raw_status or "ACTUAL",
+            "active": True,
+            "is_active": True,
+            "isActive": True,
+            "coordinates": latest_coords,
+            "lat": latest_coords.get("lat") if latest_coords else None,
+            "lng": latest_coords.get("lng") if latest_coords else None,
+            "locationName": latest_coords.get("matched_name") if latest_coords else None,
+        }
 
     mobile = MobileAppResponse(
         awbNumber=awb_number,
@@ -378,6 +422,10 @@ def to_mobile_app_response(resp: UnifiedTrackingResponse) -> dict:
         latestEvent=resp.latest_event.status_message if resp.latest_event else None,
         latestStation=resp.latest_event.station if resp.latest_event else None,
         latestTime=resp.latest_event.event_time.isoformat() if resp.latest_event and resp.latest_event.event_time else None,
+        latestRawStatus=latest_raw_status or ("ACTUAL" if resp.latest_event else None),
+        latestActive=True if resp.latest_event else None,
+        latest_event=latest_ev_dict,
+        latestEventObject=latest_ev_dict,
         events=mobile_events,
     )
     return mobile.model_dump()

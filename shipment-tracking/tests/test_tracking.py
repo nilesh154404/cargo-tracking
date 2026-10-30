@@ -381,6 +381,31 @@ async def test_active_milestone_flag_resolution(db_session):
         assert active_events[0].raw_status == "ACTUAL"
 
 
+@pytest.mark.asyncio
+async def test_mobile_app_response_active_flags(db_session):
+    from app.schemas.tracking import to_mobile_app_response
+    orchestrator = TrackingOrchestratorAgent()
+    response = await orchestrator.execute_tracking(
+        query="ONEU5436776",
+        db=db_session,
+    )
+    mobile = to_mobile_app_response(response)
+    assert mobile["latest_event"] is not None
+    assert mobile["latest_event"]["active"] is True
+    assert mobile["latest_event"]["is_active"] is True
+    assert mobile["latestActive"] is True
+    assert mobile["latestRawStatus"] is not None
+    
+    # Check that events have active flags
+    active_in_events = [e for e in mobile["events"] if e.get("active")]
+    assert len(active_in_events) == 1
+    assert active_in_events[0]["is_active"] is True
+    assert active_in_events[0]["isActive"] is True
+    assert active_in_events[0]["raw_status"] in ("ACTUAL", "Verified")
+    assert active_in_events[0]["rawStatus"] == active_in_events[0]["raw_status"]
+
+
+
 
 
 
