@@ -121,10 +121,25 @@ async def test_agent_tracking_containertracking_net_hlcu(db_session):
     )
     assert response.mode == "SEA"
     assert response.carrier.name == "Hapag-Lloyd"
-    assert response.agent_trail.final_provider_used in ("hapag_lloyd", "containertracking_net", "generic_ocean")
-    assert response.status == "In Transit"
-    assert len(response.events) > 0
+    assert response.status in ("No tracking available please try after 30min", "In Transit")
     assert response.raw_data.get("modal_popup") is not None
+
+
+@pytest.mark.asyncio
+async def test_agent_tracking_no_tracking_available_ffau(db_session):
+    orchestrator = TrackingOrchestratorAgent()
+    response = await orchestrator.execute_tracking(
+        query="FFAU7778265",
+        db=db_session,
+    )
+    assert response.mode == "SEA"
+    assert response.carrier.name == "Florens Container"
+    assert response.status == "No tracking available please try after 30min"
+    assert response.message == "No tracking available please try after 30min"
+    assert len(response.events) == 0
+    assert response.latest_event is None
+    assert response.raw_data.get("modal_popup") is not None
+    assert "containertracking.net" in response.raw_data.get("containertracking_net_url", "")
 
 
 @pytest.mark.asyncio
@@ -163,7 +178,7 @@ async def test_agent_tracking_not_found(db_session):
         query="MSMU0000000",
         db=db_session,
     )
-    assert response.status in ("NOT_FOUND", "PROVIDER_ERROR")
+    assert response.status in ("NOT_FOUND", "PROVIDER_ERROR", "No tracking available please try after 30min")
     assert len(response.events) == 0
 
 
@@ -320,14 +335,12 @@ async def test_agent_tracking_containertracking_net_triton(db_session):
     )
     assert response.mode == "SEA"
     assert "Triton" in response.carrier.name
-    assert response.agent_trail.final_provider_used in ("one_line", "containertracking_net", "generic_ocean")
     if response.agent_trail.final_provider_used == "one_line":
         assert len(response.events) >= 10
         assert response.origin.city == "DA NANG"
         assert "LOS ANGELES" in response.destination.city
     else:
-        # Fallback equipment verification when network is offline/sandboxed
-        assert len(response.events) >= 2
+        assert response.status == "No tracking available please try after 30min"
     modal = response.raw_data.get("modal_popup")
     assert modal is not None
     assert "https://containertracking.net" in modal["containertracking_url"]

@@ -155,31 +155,8 @@ class ContainerTrackingNetProvider(BaseProvider):
         except Exception as exc:
             logger.debug(f"Live LDB lookup check notice: {exc}")
 
-        # 2. Build verified equipment status when no active carrier milestones exist
-        now_dt = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        events = [
-            {
-                "station": country if country != "International" else "Container Registry",
-                "status_code": "INFO",
-                "status_message": f"Container {container_num} registered ({carrier_name} - {equipment_type})",
-                "event_time": now_dt,
-                "flight_info": f"Carrier: {carrier_name}",
-                "pieces": 1,
-                "weight": None,
-                "raw_status": "Registered",
-            },
-            {
-                "station": "ISO 6346 Registry",
-                "status_code": "VERIFIED",
-                "status_message": f"ISO 6346 Check Digit Verified: {'Valid' if meta['is_check_digit_valid'] else 'Mismatch'}",
-                "event_time": now_dt,
-                "flight_info": None,
-                "pieces": 1,
-                "weight": None,
-                "raw_status": "Verified",
-            },
-        ]
-
+        # 2. When no live tracking milestones exist from carrier APIs, return NOT_FOUND
+        # Do not return synthetic/dummy events so user clearly sees tracking is not available
         raw_data = {
             "source": "ContainerTracking.net Multi-Carrier Gateway",
             "container_number": container_num,
@@ -206,19 +183,13 @@ class ContainerTrackingNetProvider(BaseProvider):
         }
 
         return ProviderResult(
-            success=True,
+            success=False,
             provider_name=self.name,
-            status_code=http_status,
-            status="In Transit",
-            origin=country if country != "International" else None,
-            destination="International Destination",
-            pieces=1,
-            weight={"unit": "kg", "value": 28000.0},
-            volume=76.2 if "40" in equipment_type else 33.2,
-            events=events,
-            latest_event=events[-1],
-            raw_data=raw_data,
-            latency_ms=latency,
+            status_code=404,
+            status="NOT_FOUND",
+            error_message="No tracking available please try after 30min",
             request_curl=request_curl,
             response_body=None,
+            latency_ms=latency,
+            raw_data=raw_data,
         )

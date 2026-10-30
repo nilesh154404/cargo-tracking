@@ -453,18 +453,9 @@ class TrackingOrchestratorAgent:
                     raw_data=None,
                 )
 
-            # No cached data either — return the original error response
-            # Check if it was a 404 / no records found vs network failure
-            is_404 = any(a.http_status == 404 for a in attempts)
-            if is_404 or not last_error or "not found" in (last_error or "").lower():
-                final_status = "NOT_FOUND"
-                final_message = (
-                    f"Tracking not found: No shipment records found for {route_plan.clean_tracking_number} on {route_plan.carrier_name}. "
-                    "Please verify the tracking number."
-                )
-            else:
-                final_status = "PROVIDER_ERROR"
-                final_message = f"Unable to retrieve tracking from {route_plan.carrier_name}: {last_error}"
+            # No cached data either — return standard no tracking available response
+            final_status = "No tracking available please try after 30min"
+            final_message = "No tracking available please try after 30min"
 
         orig_match = match_location(successful_result.origin, route_plan.mode) if (successful_result and successful_result.origin) else None
         dest_match = match_location(successful_result.destination, route_plan.mode) if (successful_result and successful_result.destination) else None
@@ -476,6 +467,9 @@ class TrackingOrchestratorAgent:
                 meta = get_containertracking_metadata(route_plan.clean_tracking_number)
                 if "modal_popup" not in resp_raw_data:
                     resp_raw_data["modal_popup"] = meta.get("modal_popup")
+                for k in ("source", "container_number", "prefix", "serial", "carrier_name", "carrier_slug", "country", "equipment_type", "is_check_digit_valid", "official_tracking_url", "containertracking_net_url", "tracktainer_url", "allows_iframe"):
+                    if k not in resp_raw_data and meta.get(k) is not None:
+                        resp_raw_data[k] = meta[k]
             except Exception:
                 pass
 
