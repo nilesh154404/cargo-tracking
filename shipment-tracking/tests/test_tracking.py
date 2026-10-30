@@ -361,6 +361,27 @@ async def test_agent_tracking_hapag_lloyd_dayu(db_session):
     assert "https://containertracking.net" in modal["containertracking_url"]
 
 
+@pytest.mark.asyncio
+async def test_active_milestone_flag_resolution(db_session):
+    orchestrator = TrackingOrchestratorAgent()
+    response = await orchestrator.execute_tracking(
+        query="ONEU5436776",
+        db=db_session,
+    )
+    assert response.latest_event is not None
+    assert response.latest_event.active is True
+    assert response.latest_event.is_active is True
+    # Exactly one event in events must have active=True
+    active_events = [e for e in response.events if e.active]
+    assert len(active_events) == 1
+    assert active_events[0].is_active is True
+    # If ACTUAL event exists, it must be the active one
+    actual_events = [e for e in response.events if (e.raw_status or "").upper() == "ACTUAL"]
+    if actual_events:
+        assert active_events[0].raw_status == "ACTUAL"
+
+
+
 
 
 

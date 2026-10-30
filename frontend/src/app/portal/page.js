@@ -1244,8 +1244,10 @@ export default function TenantPortalPage() {
                         );
                       })
                       .sort((a, b) => new Date(b.event_time || b.timestamp || 0) - new Date(a.event_time || a.timestamp || 0))
-                      .map((ev, idx) => {
-                        const isLatest = idx === 0;
+                      .map((ev, idx, arr) => {
+                        const hasAnyActive = arr.some(e => e.active || e.is_active);
+                        const isLatest = hasAnyActive ? Boolean(ev.active || ev.is_active) : idx === 0;
+                        const isEstimated = (ev.raw_status || "").toUpperCase() === "ESTIMATED";
                         const t = new Date(ev.event_time || ev.timestamp || Date.now());
                         const dateStr = !isNaN(t.getTime()) ? t.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-";
                         const timeStr = !isNaN(t.getTime()) ? t.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "-";
@@ -1258,7 +1260,7 @@ export default function TenantPortalPage() {
                               gap: "1.5rem",
                               padding: "1rem",
                               borderRadius: "var(--radius-md)",
-                              background: isLatest ? "#eff6ff" : "var(--bg-secondary)",
+                              background: isLatest ? "#eff6ff" : (isEstimated ? "#fbfbfe" : "var(--bg-secondary)"),
                               border: `1px solid ${isLatest ? "#bfdbfe" : "var(--border-subtle)"}`
                             }}
                           >
@@ -1267,11 +1269,12 @@ export default function TenantPortalPage() {
                               <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{timeStr}</div>
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                                 <span style={{ fontWeight: "700", fontSize: "0.95rem" }}>
                                   {ev.status_message || ev.status || ev.status_code || "Checkpoint"}
                                 </span>
-                                {isLatest && <span className="badge badge-success" style={{ fontSize: "0.62rem" }}>LATEST</span>}
+                                {isLatest && <span className="badge badge-success" style={{ fontSize: "0.62rem" }}>CURRENT / ACTIVE</span>}
+                                {isEstimated && <span className="badge" style={{ fontSize: "0.62rem", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>ESTIMATED</span>}
                               </div>
                               <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", fontSize: "0.78rem", marginTop: "0.35rem" }}>
                                 {ev.station && <span style={{ background: "#ffffff", padding: "0.2rem 0.5rem", borderRadius: "4px", border: "1px solid var(--border-subtle)" }}>📍 {ev.station}</span>}

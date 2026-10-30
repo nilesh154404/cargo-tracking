@@ -422,6 +422,9 @@ class OneLineProvider(BaseProvider):
                     "event_time": le_cop.get("eventDate") or le_cop.get("eventLocalPortDate"),
                     "flight_info": f"{c0_no} | {v_name or ''}".strip(" |"),
                     "coordinates": coords,
+                    "raw_status": le_cop.get("triggerType") or "ACTUAL",
+                    "active": True,
+                    "is_active": True,
                 }
             else:
                 le = c0.get("latestEvent") or {}
@@ -434,7 +437,21 @@ class OneLineProvider(BaseProvider):
                     "event_time": le.get("date"),
                     "flight_info": f"{c0.get('containerNo')} | {vessel_name or ''}".strip(" |"),
                     "coordinates": coords,
+                    "raw_status": "ACTUAL",
+                    "active": True,
+                    "is_active": True,
                 }
+
+        # Mark exactly the latest ACTUAL milestone as active in all_events
+        actual_candidates = [
+            (idx, ev) for idx, ev in enumerate(all_events)
+            if (ev.get("raw_status") or "").upper() == "ACTUAL"
+        ]
+        active_target_idx = actual_candidates[-1][0] if actual_candidates else (0 if all_events else None)
+        for idx, ev in enumerate(all_events):
+            is_cur = (idx == active_target_idx)
+            ev["active"] = is_cur
+            ev["is_active"] = is_cur
 
         weight_dict = None
         if total_weight_kg > 0:

@@ -236,6 +236,8 @@ class UnifiedTrackingEvent(BaseModel):
     weight: Optional[float] = None
     raw_status: Optional[str] = None
     coordinates: Optional[LocationCoordinates] = None
+    active: bool = False
+    is_active: bool = False
 
 
 class ProviderAttempt(BaseModel):

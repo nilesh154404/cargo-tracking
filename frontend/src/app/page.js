@@ -663,54 +663,60 @@ export default function MarketingHomePage() {
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                      {containerTelemetry.standard.events.map((ev, idx) => {
-                        const isLatest = idx === 0;
-                        const t = new Date(ev.event_time);
-                        const dateStr = !isNaN(t.getTime()) ? t.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-";
-                        const timeStr = !isNaN(t.getTime()) ? t.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "-";
+                      {(() => {
+                        const hasAnyActive = containerTelemetry.standard.events.some(e => e.active || e.is_active);
+                        return containerTelemetry.standard.events.map((ev, idx) => {
+                          const isLatest = hasAnyActive ? Boolean(ev.active || ev.is_active) : idx === 0;
+                          const isEstimated = (ev.raw_status || "").toUpperCase() === "ESTIMATED";
+                          const t = new Date(ev.event_time);
+                          const dateStr = !isNaN(t.getTime()) ? t.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-";
+                          const timeStr = !isNaN(t.getTime()) ? t.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "-";
 
-                        return (
-                          <div
-                            key={idx}
-                            style={{
-                              display: "flex",
-                              gap: "1.5rem",
-                              padding: "1rem 1.25rem",
-                              background: isLatest ? "#eff6ff" : "var(--bg-surface)",
-                              border: `1px solid ${isLatest ? "#bfdbfe" : "var(--border-subtle)"}`,
-                              borderRadius: "var(--radius-md)"
-                            }}
-                          >
-                            <div style={{ minWidth: "120px" }}>
-                              <div style={{ fontSize: "0.85rem", fontWeight: "700", color: "var(--text-main)" }}>{dateStr}</div>
-                              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{timeStr}</div>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.3rem" }}>
-                                <span style={{ fontWeight: "700", fontSize: "0.95rem", color: isLatest ? "var(--accent-blue)" : "var(--text-main)" }}>
-                                  {ev.status_message}
-                                </span>
-                                {isLatest && <span className="badge badge-success" style={{ fontSize: "0.62rem" }}>LATEST</span>}
+                          return (
+                            <div
+                              key={idx}
+                              style={{
+                                display: "flex",
+                                gap: "1.5rem",
+                                padding: "1rem 1.25rem",
+                                background: isLatest ? "#eff6ff" : (isEstimated ? "#fbfbfe" : "var(--bg-surface)"),
+                                border: `1px solid ${isLatest ? "#bfdbfe" : "var(--border-subtle)"}`,
+                                borderRadius: "var(--radius-md)"
+                              }}
+                            >
+                              <div style={{ minWidth: "120px" }}>
+                                <div style={{ fontSize: "0.85rem", fontWeight: "700", color: "var(--text-main)" }}>{dateStr}</div>
+                                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{timeStr}</div>
                               </div>
-                              {ev.status_code && (
-                                <div style={{ fontSize: "0.78rem", fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginBottom: "0.4rem" }}>
-                                  STATUS CODE: {ev.status_code}
-                                </div>
-                              )}
-                              <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", fontSize: "0.78rem" }}>
-                                {ev.station && <span style={{ background: "#f1f5f9", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>📍 {ev.station}</span>}
-                                {ev.coordinates && (
-                                  <span style={{ background: "#e0f2fe", color: "#0369a1", padding: "0.2rem 0.5rem", borderRadius: "4px", fontFamily: "var(--font-mono)" }}>
-                                    🌐 GPS: {ev.coordinates.lat}, {ev.coordinates.lng} ({ev.coordinates.matched_name})
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.3rem", flexWrap: "wrap" }}>
+                                  <span style={{ fontWeight: "700", fontSize: "0.95rem", color: isLatest ? "var(--accent-blue)" : "var(--text-main)" }}>
+                                    {ev.status_message}
                                   </span>
+                                  {isLatest && <span className="badge badge-success" style={{ fontSize: "0.62rem" }}>CURRENT / ACTIVE</span>}
+                                  {isEstimated && <span className="badge" style={{ fontSize: "0.62rem", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>ESTIMATED</span>}
+                                  {!isEstimated && ev.raw_status && <span className="badge" style={{ fontSize: "0.62rem", background: "#f1f5f9", color: "#475569" }}>{ev.raw_status}</span>}
+                                </div>
+                                {ev.status_code && (
+                                  <div style={{ fontSize: "0.78rem", fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginBottom: "0.4rem" }}>
+                                    STATUS CODE: {ev.status_code}
+                                  </div>
                                 )}
-                                {ev.flight_info && <span style={{ background: "#f1f5f9", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>🚢 {ev.flight_info}</span>}
-                                {ev.weight && <span style={{ background: "#f1f5f9", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>⚖️ {ev.weight} KG</span>}
+                                <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", fontSize: "0.78rem" }}>
+                                  {ev.station && <span style={{ background: "#f1f5f9", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>📍 {ev.station}</span>}
+                                  {ev.coordinates && (
+                                    <span style={{ background: "#e0f2fe", color: "#0369a1", padding: "0.2rem 0.5rem", borderRadius: "4px", fontFamily: "var(--font-mono)" }}>
+                                      🌐 GPS: {ev.coordinates.lat}, {ev.coordinates.lng} ({ev.coordinates.matched_name})
+                                    </span>
+                                  )}
+                                  {ev.flight_info && <span style={{ background: "#f1f5f9", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>🚢 {ev.flight_info}</span>}
+                                  {ev.weight && <span style={{ background: "#f1f5f9", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>⚖️ {ev.weight} KG</span>}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}

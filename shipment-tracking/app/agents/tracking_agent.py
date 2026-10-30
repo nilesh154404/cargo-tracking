@@ -271,6 +271,8 @@ class TrackingOrchestratorAgent:
                     weight=clean_w,
                     raw_status=ev.get("raw_status"),
                     coordinates=LocationCoordinates(**coords) if coords else None,
+                    active=bool(ev.get("active", False)),
+                    is_active=bool(ev.get("is_active", False)),
                 )
                 events_list.append(event_obj)
 
@@ -286,13 +288,35 @@ class TrackingOrchestratorAgent:
                     flight_info=le.get("flightInfo") or le.get("flight_info"),
                     pieces=le.get("pieces"),
                     weight=le.get("weight"),
+                    raw_status=le.get("raw_status") or "ACTUAL",
                     coordinates=LocationCoordinates(**le_coords) if le_coords else None,
+                    active=True,
+                    is_active=True,
                 )
 
             # Ensure final response events are ordered descending (latest milestone first)
             events_list = sort_events_descending(events_list)
+
+            # Identify the single current/active milestone (ignoring future ESTIMATED dates)
+            has_active = any(ev.active for ev in events_list)
+            if not has_active and events_list:
+                # Find the most recent ACTUAL event
+                actual_event = next(
+                    (ev for ev in events_list if (ev.raw_status or "").upper() == "ACTUAL"),
+                    None
+                )
+                active_ev = actual_event or events_list[0]
+                for ev in events_list:
+                    is_act = (ev is active_ev)
+                    ev.active = is_act
+                    ev.is_active = is_act
+
             if not latest_event_obj and events_list:
-                latest_event_obj = events_list[0]
+                # Default latest_event_obj to the active milestone
+                active_match = next((ev for ev in events_list if ev.active), events_list[0])
+                latest_event_obj = active_match.model_copy()
+                latest_event_obj.active = True
+                latest_event_obj.is_active = True
 
         # Step 4: Persist in MySQL Database
         if db and attempts:

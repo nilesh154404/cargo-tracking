@@ -166,3 +166,4 @@ class HapagLloydProvider(BaseProvider):
             },
             latency_ms=latency,
         )
+
