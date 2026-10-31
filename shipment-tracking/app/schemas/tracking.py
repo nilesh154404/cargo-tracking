@@ -329,7 +329,6 @@ class MobileAppResponse(BaseModel):
     latestEvent: Optional[str] = None
     latestStation: Optional[str] = None
     latestTime: Optional[str] = None
-    latest_event: Optional[MobileAppEvent] = None
     events: List[MobileAppEvent] = []
 
 
@@ -367,25 +366,6 @@ def to_mobile_app_response(resp: UnifiedTrackingResponse) -> dict:
     # Remove hyphen from AWB number
     awb_number = resp.tracking_number.replace("-", "")
 
-    latest_ev = None
-    if resp.latest_event:
-        latest_coords = resp.latest_event.coordinates.model_dump() if resp.latest_event.coordinates else None
-        latest_raw_status = getattr(resp.latest_event, "raw_status", None) or "ACTUAL"
-        latest_ev = MobileAppEvent(
-            station=resp.latest_event.station,
-            status=resp.latest_event.status_message,
-            statusCode=resp.latest_event.status_code,
-            time=resp.latest_event.event_time.isoformat() if resp.latest_event.event_time else None,
-            flight=resp.latest_event.flight_info,
-            pieces=str(resp.latest_event.pieces) if resp.latest_event.pieces is not None else None,
-            weight=str(resp.latest_event.weight) if resp.latest_event.weight is not None else None,
-            lat=latest_coords.get("lat") if latest_coords else None,
-            lng=latest_coords.get("lng") if latest_coords else None,
-            locationName=latest_coords.get("matched_name") if latest_coords else None,
-            is_active=True,
-            raw_status=latest_raw_status,
-        )
-
     mobile = MobileAppResponse(
         awbNumber=awb_number,
         mode=resp.mode,
@@ -404,7 +384,6 @@ def to_mobile_app_response(resp: UnifiedTrackingResponse) -> dict:
         latestEvent=resp.latest_event.status_message if resp.latest_event else None,
         latestStation=resp.latest_event.station if resp.latest_event else None,
         latestTime=resp.latest_event.event_time.isoformat() if resp.latest_event and resp.latest_event.event_time else None,
-        latest_event=latest_ev,
         events=mobile_events,
     )
     return mobile.model_dump()

@@ -403,16 +403,17 @@ async def test_mobile_app_response_active_flags(db_session):
         db=db_session,
     )
     mobile = to_mobile_app_response(response)
-    assert mobile["latest_event"] is not None
-    assert mobile["latest_event"]["is_active"] is True
-    assert "active" not in mobile["latest_event"]
-    assert "isActive" not in mobile["latest_event"]
-    assert "rawStatus" not in mobile["latest_event"]
+    assert "latest_event" not in mobile
     assert "latestEventObject" not in mobile
     
     # Check that events have only is_active and raw_status without duplicates
     active_in_events = [e for e in mobile["events"] if e.get("is_active")]
     assert len(active_in_events) == 1
+    assert active_in_events[0]["is_active"] is True
+    assert active_in_events[0]["raw_status"] in ("ACTUAL", "Verified")
+    assert "active" not in active_in_events[0]
+    assert "isActive" not in active_in_events[0]
+    assert "rawStatus" not in active_in_events[0]
     assert active_in_events[0]["is_active"] is True
     assert active_in_events[0]["raw_status"] in ("ACTUAL", "Verified")
     assert "active" not in active_in_events[0]
