@@ -100,6 +100,10 @@ class TrackingInputRequest(BaseModel):
         default=None,
         description="Optional carrier search type override (e.g. CNTR_NO, BKG_NO, PO_NO)",
     )
+    response_type: Optional[str] = Field(
+        default=None,
+        description="Optional response format: 'standard' or 'mobile-app'. Defaults to 'standard'.",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -115,6 +119,7 @@ class TrackingInputRequest(BaseModel):
                 "force_refresh": False,
                 "customer_reference": "PO-99201",
                 "search_type": "CNTR_NO",
+                "response_type": "mobile-app",
             }
         }
     }
@@ -203,6 +208,9 @@ class TrackingInputRequest(BaseModel):
                 cleaned["customer_reference"] = data["customer_reference"]
             if "search_type" in data and data["search_type"] is not None:
                 cleaned["search_type"] = data["search_type"]
+            resp_type = data.get("response_type") or data.get("responseType") or data.get("RESPONSE_TYPE")
+            if resp_type is not None:
+                cleaned["response_type"] = str(resp_type)
             return cleaned
         return data
 

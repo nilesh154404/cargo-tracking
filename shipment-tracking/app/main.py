@@ -576,7 +576,7 @@ def upgrade_subscription_tier(
 async def track_shipment_post(
     req: TrackingInputRequest,
     request: Request,
-    response_type: str = Query("standard", description="Response format: 'standard' or 'mobile-app'"),
+    response_type: Optional[str] = Query(None, description="Optional response format: 'standard' or 'mobile-app'. Can also be passed directly in request body."),
     auth: AuthContext = Depends(require_scope("tracking:live")),
     db: Session = Depends(get_db),
 ):
@@ -587,6 +587,8 @@ async def track_shipment_post(
     """
     tenant = auth.tenant
     _check_and_deduct_quota(tenant, db, credits=1)
+
+    effective_response_type = req.response_type or response_type or "standard"
 
     mawb = req.MAWB_OBL_NO or req.mawb_obl_no
     cntr = req.CONTAINER_NO or req.container_no
@@ -628,7 +630,7 @@ async def track_shipment_post(
     db.add(usage)
     db.commit()
 
-    if response_type == "mobile-app":
+    if effective_response_type == "mobile-app":
         return to_mobile_app_response(result)
     return result
 

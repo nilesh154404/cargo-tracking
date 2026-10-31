@@ -150,6 +150,25 @@ def test_api_mobile_events_descending_order():
             assert t_curr >= t_next
 
 
+def test_api_mobile_response_type_in_body():
+    payload = {
+        "CONTAINER_NO": "ONEU5436776",
+        "CARRIER_CODE": "ONE",
+        "CARRIER_NAME": "Ocean Network Express",
+        "response_type": "mobile-app",
+    }
+    response = client.post("/api/v1/track", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "awbNumber" in data
+    assert "trackingStatus" in data
+    assert "events" in data
+    assert "latest_event" not in data
+    if data["events"]:
+        assert "is_active" in data["events"][0]
+        assert "raw_status" in data["events"][0]
+
+
 def test_api_history_events_descending_order():
     response = client.get("/api/v1/history/160-15246221")
     assert response.status_code == 200
