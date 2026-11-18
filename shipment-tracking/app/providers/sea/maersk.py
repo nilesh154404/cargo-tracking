@@ -361,7 +361,7 @@ class MaerskProvider(BaseProvider):
             )
 
     async def _track_via_browser(self, query_id: str) -> Optional[Dict[str, Any]]:
-        """Fallback browser session to bypass Akamai Bot Manager using local Chrome."""
+        """Fallback browser session to bypass Akamai Bot Manager using local Chrome or Chromium."""
         try:
             from playwright.async_api import async_playwright
         except ImportError:
@@ -369,19 +369,44 @@ class MaerskProvider(BaseProvider):
             return None
 
         chrome_paths = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/snap/bin/chromium",
+            "/usr/lib/chromium/chromium",
+            "/usr/bin/brave-browser",
             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             "/Applications/Chromium.app/Contents/MacOS/Chromium",
             "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
         ]
         executable_path = next((p for p in chrome_paths if os.path.exists(p)), None)
 
+        if not executable_path:
+            try:
+                import subprocess
+                import sys
+                proc = subprocess.run(
+                    [sys.executable, "-m", "playwright", "install", "chromium"],
+                    capture_output=True,
+                    timeout=40,
+                )
+                logger.info(f"Playwright chromium install status: {proc.returncode}")
+            except Exception as e:
+                logger.debug(f"Auto-install playwright notice: {e}")
+
         try:
             async with async_playwright() as p:
-                launch_kwargs = {
+                launch_kwargs: Dict[str, Any] = {
                     "headless": True,
                     "args": [
                         "--no-sandbox",
                         "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--no-first-run",
+                        "--no-zygote",
+                        "--single-process",
                         "--disable-blink-features=AutomationControlled",
                     ],
                 }
@@ -418,12 +443,12 @@ class MaerskProvider(BaseProvider):
 
                 nav_url = f"https://www.maersk.com/tracking/{query_id}"
                 try:
-                    await page.goto(nav_url, wait_until="domcontentloaded", timeout=40000)
+                    await page.goto(nav_url, wait_until="domcontentloaded", timeout=25000)
                 except Exception as e:
                     logger.debug(f"Maersk browser navigation notice: {e}")
 
                 try:
-                    await asyncio.wait_for(done_event.wait(), timeout=20.0)
+                    await asyncio.wait_for(done_event.wait(), timeout=12.0)
                 except asyncio.TimeoutError:
                     pass
 

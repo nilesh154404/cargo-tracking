@@ -693,7 +693,7 @@ def parse_and_identify(
             prefix=prefix,
             serial_number=serial,
             primary_provider="maersk",
-            fallback_providers=["generic_ocean"],
+            fallback_providers=["ldb_container", "containertracking_net", "generic_ocean"],
             is_valid_format=True,
             is_supported=True,
             relatable_message=None,

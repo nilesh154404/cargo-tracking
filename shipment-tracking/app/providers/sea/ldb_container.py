@@ -139,7 +139,12 @@ class LdbContainerProvider(BaseProvider):
                     break
 
             # 3. Parse and sort milestones chronologically
-            raw_events = obj.get("trackingInfoSearchDownload") or obj.get("trackLog") or []
+            raw_events = obj.get("trackLog") or obj.get("trackingInfoSearchDownload") or []
+            cycles = [e.get("cntrCycleId") for e in raw_events if isinstance(e.get("cntrCycleId"), int)]
+            if cycles:
+                latest_cycle = max(cycles)
+                raw_events = [e for e in raw_events if e.get("cntrCycleId") == latest_cycle]
+
             sorted_raw = sorted(
                 raw_events,
                 key=lambda x: (x.get("timeInMs") or 0, x.get("timestampTimezone") or ""),
