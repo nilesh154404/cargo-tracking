@@ -375,10 +375,10 @@ SEA_CONTAINER_PREFIX_MAP: Dict[str, Dict[str, str]] = {
     "MRKU": {"carrier_code": "MSK", "name": "Maersk", "primary_provider": "maersk", "fallback_providers": "track_trace,ldb_container,generic_ocean"},
     "MRSU": {"carrier_code": "MSK", "name": "Maersk Line", "primary_provider": "maersk", "fallback_providers": "track_trace,ldb_container,generic_ocean"},
     "MRSV": {"carrier_code": "MSK", "name": "Maersk", "primary_provider": "maersk", "fallback_providers": "track_trace,ldb_container,generic_ocean"},
-    "MSBU": {"carrier_code": "MSBU", "name": "Mediterranean Shipping Company (MSC)", "primary_provider": "containertracking_net", "fallback_providers": "generic_ocean"},
+    "MSBU": {"carrier_code": "MSC", "name": "Mediterranean Shipping Company (MSC)", "primary_provider": "msc", "fallback_providers": "generic_ocean"},
     "MSCU": {"carrier_code": "MSC", "name": "Mediterranean Shipping Company", "primary_provider": "msc", "fallback_providers": "generic_ocean"},
     "MSDU": {"carrier_code": "MSC", "name": "Mediterranean Shipping Company", "primary_provider": "msc", "fallback_providers": "generic_ocean"},
-    "MSGU": {"carrier_code": "MSGU", "name": "Mediterranean Shipping Company (MSC)", "primary_provider": "containertracking_net", "fallback_providers": "generic_ocean"},
+    "MSGU": {"carrier_code": "MSC", "name": "Mediterranean Shipping Company (MSC)", "primary_provider": "msc", "fallback_providers": "generic_ocean"},
     "MSKU": {"carrier_code": "MSK", "name": "Maersk", "primary_provider": "maersk", "fallback_providers": "track_trace,ldb_container,generic_ocean"},
     "MSMU": {"carrier_code": "MSC", "name": "Mediterranean Shipping Company", "primary_provider": "msc", "fallback_providers": "generic_ocean"},
     "MSNU": {"carrier_code": "MSC", "name": "Mediterranean Shipping Company", "primary_provider": "msc", "fallback_providers": "generic_ocean"},
@@ -649,6 +649,28 @@ def parse_and_identify(
             serial_number=serial,
             primary_provider="one_line",
             fallback_providers=["ldb_container", "generic_ocean"],
+            is_valid_format=True,
+            is_supported=True,
+            relatable_message=None,
+        )
+
+    # 0b. Mediterranean Shipping Company (MSC) identification (containers, bookings, or carrier code override)
+    is_msc_carrier = (
+        (carrier_code_override and carrier_code_override.strip().upper() in ("MSC", "MSCU", "MEDU"))
+        or cleaned.startswith(("MEDU", "MSCU", "MSBU", "MSDU", "MSGU", "MSMU", "MSNU", "MSWU"))
+    )
+    if is_msc_carrier:
+        prefix = cleaned[:4]
+        serial = cleaned[4:]
+        return IdentificationResult(
+            mode="SEA",
+            clean_tracking_number=cleaned,
+            carrier_code="MSC",
+            carrier_name="Mediterranean Shipping Company",
+            prefix=prefix,
+            serial_number=serial,
+            primary_provider="msc",
+            fallback_providers=["generic_ocean"],
             is_valid_format=True,
             is_supported=True,
             relatable_message=None,

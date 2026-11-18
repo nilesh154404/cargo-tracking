@@ -231,3 +231,46 @@ def test_api_track_booking_container_get():
     assert len(data["events"]) >= 4
 
 
+def test_api_track_msc_booking_container_standard():
+    payload = {
+        "billing_no": "MEDUAMK17603",
+        "container_no": "MSBU6562409",
+        "response_type": "standard",
+    }
+    response = client.post("/api/v1/track/booking-container", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tracking_number"] == "MSBU6562409"
+    assert data["mode"] == "SEA"
+    assert data["carrier"]["code"] == "MSC"
+    assert "events" in data
+    assert len(data["events"]) >= 4
+    assert data["origin"] == "NHAVA SHEVA, IN"
+    assert data["destination"] == "AD DAMMAM, SA"
+    assert data["latest_event"] is not None
+    assert data["latest_event"]["is_active"] is True
+    assert data["latest_event"]["raw_status"] == "ACTUAL"
+
+
+def test_api_track_msc_booking_container_mobile_app():
+    payload = {
+        "booking_no": "MEDUAMK17603",
+        "container_no": "MSBU6562409",
+        "response_type": "mobile-app",
+    }
+    response = client.post("/api/v1/track/booking-container", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["awbNumber"] == "MSBU6562409"
+    assert data["mode"] == "SEA"
+    assert data["carrierCode"] == "MSC"
+    assert data["origin"] == "NHAVA SHEVA, IN"
+    assert data["destination"] == "AD DAMMAM, SA"
+    assert "latest_event" not in data
+    assert len(data["events"]) >= 4
+    active_events = [e for e in data["events"] if e.get("is_active")]
+    assert len(active_events) == 1
+    assert active_events[0]["raw_status"] == "ACTUAL"
+
+
+

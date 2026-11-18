@@ -716,10 +716,11 @@ async def track_booking_container_post(
     db: Session = Depends(get_db),
 ):
     """
-    Live track a sea shipment using Container Number and Booking / Tracking Number.
-    Queries ONE Line's official Voyage List & Container COP Events endpoints:
-    - Voyage List: https://ecomm.one-line.com/api/v2/edh/vessel/track-and-trace/voyage-list
-    - COP Events: https://ecomm.one-line.com/api/v2/edh/containers/track-and-trace/cop-events
+    Live track a sea shipment using Container Number and Booking / Tracking / Billing Number.
+    Supports official live carrier integrations (ONE Line, MSC, etc.):
+    - ONE Line: Voyage List & Container COP Events
+    - MSC: Mediterranean Shipping Company TrackingInfo
+    Filters events to return only the requested container's events.
     Converts and returns in canonical standard schema or lightweight mobile-app schema.
     Meters 1 credit against tenant monthly subscription quota.
     """
@@ -727,16 +728,30 @@ async def track_booking_container_post(
     _check_and_deduct_quota(tenant, db, credits=1)
 
     effective_response_type = req.response_type or response_type or "standard"
-    booking_no = req.booking_no or req.tracking_no
+    booking_no = req.booking_no or req.tracking_no or req.billing_no
     container_no = req.container_no
+
+    carrier_cd = req.carrier_code
+    carrier_nm = req.carrier_name
+
+    bkg_upper = (booking_no or "").strip().upper()
+    cntr_upper = (container_no or "").strip().upper()
+
+    if not carrier_cd:
+        if bkg_upper.startswith(("MEDU", "MSCU")) or cntr_upper.startswith(("MEDU", "MSCU", "MSBU", "MSDU", "MSGU", "MSMU", "MSNU", "MSWU")):
+            carrier_cd = "MSC"
+            carrier_nm = "Mediterranean Shipping Company"
+        elif bkg_upper.startswith(("ISTG", "ONEU")) or cntr_upper.startswith(("ONEU", "NYKU", "MOLU", "KKFU", "TGHU", "JOTU")):
+            carrier_cd = "ONE"
+            carrier_nm = "Ocean Network Express"
 
     result = await orchestrator.execute_tracking(
         query=container_no,
         container_no=container_no,
         mawb_obl_no=booking_no,
         explicit_mode="SEA",
-        carrier_code="ONE",
-        carrier_name="Ocean Network Express",
+        carrier_code=carrier_cd,
+        carrier_name=carrier_nm,
         tenant_id=tenant.id,
         db=db,
     )
@@ -748,7 +763,7 @@ async def track_booking_container_post(
         transport_mode=result.mode,
         carrier_code=result.carrier.code,
         credits_consumed=1,
-        provider_used=result.agent_trail.final_provider_used or "one_line",
+        provider_used=result.agent_trail.final_provider_used or (carrier_cd.lower() if carrier_cd else "sea_tracking"),
         status=result.status,
         request_ip=request.client.host if request.client else None,
     )
@@ -764,28 +779,44 @@ async def track_booking_container_post(
 @app.get("/api/v1/track/container-booking", include_in_schema=False)
 async def track_booking_container_get(
     request: Request,
-    container_no: str = Query(..., description="Container Number (e.g. NYKU4850737)"),
-    booking_no: Optional[str] = Query(None, description="Booking Number / Tracking Number (e.g. ISTG20746300)"),
+    container_no: str = Query(..., description="Container Number (e.g. NYKU4850737, MSBU6562409)"),
+    booking_no: Optional[str] = Query(None, description="Booking Number / Bill of Lading Number (e.g. ISTG20746300, MEDUAMK17603)"),
     tracking_no: Optional[str] = Query(None, description="Tracking Number alias for booking_no"),
+    billing_no: Optional[str] = Query(None, description="Billing Number alias for booking_no"),
+    carrier_code: Optional[str] = Query(None, description="Optional carrier code (e.g. MSC, ONE)"),
     response_type: str = Query("standard", description="Response format: 'standard' or 'mobile-app'"),
     auth: AuthContext = Depends(require_scope("tracking:live")),
     db: Session = Depends(get_db),
 ):
     """
-    GET endpoint to track a container by Container Number and Booking / Tracking Number.
+    GET endpoint to track a container by Container Number and Booking / Tracking / Billing Number.
     """
     tenant = auth.tenant
     _check_and_deduct_quota(tenant, db, credits=1)
 
-    effective_bkg = booking_no or tracking_no
+    effective_bkg = booking_no or tracking_no or billing_no
+
+    carrier_cd = carrier_code
+    carrier_nm = None
+
+    bkg_upper = (effective_bkg or "").strip().upper()
+    cntr_upper = (container_no or "").strip().upper()
+
+    if not carrier_cd:
+        if bkg_upper.startswith(("MEDU", "MSCU")) or cntr_upper.startswith(("MEDU", "MSCU", "MSBU", "MSDU", "MSGU", "MSMU", "MSNU", "MSWU")):
+            carrier_cd = "MSC"
+            carrier_nm = "Mediterranean Shipping Company"
+        elif bkg_upper.startswith(("ISTG", "ONEU")) or cntr_upper.startswith(("ONEU", "NYKU", "MOLU", "KKFU", "TGHU", "JOTU")):
+            carrier_cd = "ONE"
+            carrier_nm = "Ocean Network Express"
 
     result = await orchestrator.execute_tracking(
         query=container_no,
         container_no=container_no,
         mawb_obl_no=effective_bkg,
         explicit_mode="SEA",
-        carrier_code="ONE",
-        carrier_name="Ocean Network Express",
+        carrier_code=carrier_cd,
+        carrier_name=carrier_nm,
         tenant_id=tenant.id,
         db=db,
     )
@@ -797,7 +828,7 @@ async def track_booking_container_get(
         transport_mode=result.mode,
         carrier_code=result.carrier.code,
         credits_consumed=1,
-        provider_used=result.agent_trail.final_provider_used or "one_line",
+        provider_used=result.agent_trail.final_provider_used or (carrier_cd.lower() if carrier_cd else "sea_tracking"),
         status=result.status,
         request_ip=request.client.host if request.client else None,
     )

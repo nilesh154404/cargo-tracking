@@ -542,18 +542,33 @@ class AdminResetPasswordResponse(BaseModel):
 class BookingContainerTrackingRequest(BaseModel):
     booking_no: Optional[str] = Field(
         default=None,
-        description="Booking Number / Bill of Lading Number / Tracking Number (e.g. ISTG20746300)",
-        examples=["ISTG20746300"],
+        description="Booking Number / Bill of Lading Number / Billing Number / Tracking Number (e.g. ISTG20746300, MEDUAMK17603)",
+        examples=["ISTG20746300", "MEDUAMK17603"],
     )
     tracking_no: Optional[str] = Field(
         default=None,
-        description="Tracking Number alias for booking_no (e.g. ISTG20746300)",
+        description="Tracking Number alias for booking_no",
         examples=["ISTG20746300"],
+    )
+    billing_no: Optional[str] = Field(
+        default=None,
+        description="Billing Number / Bill of Lading Number alias for booking_no",
+        examples=["MEDUAMK17603"],
     )
     container_no: str = Field(
         ...,
-        description="Container Number (e.g. NYKU4850737, ONEU5436776)",
-        examples=["NYKU4850737"],
+        description="Container Number (e.g. NYKU4850737, MSBU6562409, ONEU5436776)",
+        examples=["MSBU6562409"],
+    )
+    carrier_code: Optional[str] = Field(
+        default=None,
+        description="Optional carrier code (e.g. MSC, ONE)",
+        examples=["MSC"],
+    )
+    carrier_name: Optional[str] = Field(
+        default=None,
+        description="Optional carrier name (e.g. Mediterranean Shipping Company, Ocean Network Express)",
+        examples=["Mediterranean Shipping Company"],
     )
     response_type: Optional[str] = Field(
         default="standard",
@@ -564,8 +579,9 @@ class BookingContainerTrackingRequest(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "booking_no": "ISTG20746300",
-                "container_no": "NYKU4850737",
+                "booking_no": "MEDUAMK17603",
+                "container_no": "MSBU6562409",
+                "carrier_code": "MSC",
                 "response_type": "standard",
             }
         }
@@ -577,9 +593,16 @@ class BookingContainerTrackingRequest(BaseModel):
         if isinstance(data, dict):
             b_no = (
                 data.get("booking_no")
-                or data.get("tracking_no")
-                or data.get("tracking_number")
+                or data.get("billing_no")
+                or data.get("billingNo")
+                or data.get("BILLING_NO")
+                or data.get("bl_no")
+                or data.get("BL_NO")
                 or data.get("bkg_no")
+                or data.get("bookingNo")
+                or data.get("tracking_no")
+                or data.get("trackingNo")
+                or data.get("tracking_number")
                 or data.get("BOOKING_NO")
                 or data.get("TRACKING_NO")
                 or data.get("MAWB_OBL_NO")
@@ -592,6 +615,17 @@ class BookingContainerTrackingRequest(BaseModel):
                 or data.get("CONTAINER_NO")
                 or data.get("containerNo")
             )
+            c_code = (
+                data.get("carrier_code")
+                or data.get("carrierCode")
+                or data.get("CARRIER_CODE")
+                or data.get("carrier")
+            )
+            c_name = (
+                data.get("carrier_name")
+                or data.get("carrierName")
+                or data.get("CARRIER_NAME")
+            )
             r_type = (
                 data.get("response_type")
                 or data.get("responseType")
@@ -600,10 +634,14 @@ class BookingContainerTrackingRequest(BaseModel):
             )
             if not c_no:
                 raise ValueError("container_no is required to track by container and booking number.")
+            clean_b = str(b_no).strip() if b_no else None
             return {
-                "booking_no": str(b_no).strip() if b_no else None,
-                "tracking_no": str(b_no).strip() if b_no else None,
+                "booking_no": clean_b,
+                "tracking_no": clean_b,
+                "billing_no": clean_b,
                 "container_no": str(c_no).strip(),
+                "carrier_code": str(c_code).strip() if c_code else None,
+                "carrier_name": str(c_name).strip() if c_name else None,
                 "response_type": str(r_type),
             }
         return data
