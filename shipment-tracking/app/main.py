@@ -744,6 +744,9 @@ async def track_booking_container_post(
         elif bkg_upper.startswith(("ISTG", "ONEU")) or cntr_upper.startswith(("ONEU", "NYKU", "MOLU", "KKFU", "TGHU", "JOTU")):
             carrier_cd = "ONE"
             carrier_nm = "Ocean Network Express"
+        elif (bkg_upper.isdigit() and len(bkg_upper) == 9) or bkg_upper.startswith("MAEU") or cntr_upper.startswith(("MRKU", "MSKU", "MAEU", "MRSU", "MRSV", "MVIU", "MWCU")):
+            carrier_cd = "MSK"
+            carrier_nm = "Maersk"
 
     result = await orchestrator.execute_tracking(
         query=container_no,
@@ -809,6 +812,9 @@ async def track_booking_container_get(
         elif bkg_upper.startswith(("ISTG", "ONEU")) or cntr_upper.startswith(("ONEU", "NYKU", "MOLU", "KKFU", "TGHU", "JOTU")):
             carrier_cd = "ONE"
             carrier_nm = "Ocean Network Express"
+        elif (bkg_upper.isdigit() and len(bkg_upper) == 9) or bkg_upper.startswith("MAEU") or cntr_upper.startswith(("MRKU", "MSKU", "MAEU", "MRSU", "MRSV", "MVIU", "MWCU")):
+            carrier_cd = "MSK"
+            carrier_nm = "Maersk"
 
     result = await orchestrator.execute_tracking(
         query=container_no,

@@ -223,6 +223,10 @@ def test_api_track_booking_container_mobile_app():
     assert active_events[0]["raw_status"] == "ACTUAL"
 
 
+
+
+
+
 def test_api_track_booking_container_get():
     response = client.get("/api/v1/track/booking-container?container_no=NYKU4850737&booking_no=ISTG20746300")
     assert response.status_code == 200
@@ -271,6 +275,53 @@ def test_api_track_msc_booking_container_mobile_app():
     active_events = [e for e in data["events"] if e.get("is_active")]
     assert len(active_events) == 1
     assert active_events[0]["raw_status"] == "ACTUAL"
+
+
+def test_api_track_maersk_booking_container_standard():
+    payload = {
+        "billing_no": "275400740",
+        "container_no": "MRKU8195638",
+        "response_type": "standard",
+    }
+    response = client.post("/api/v1/track/booking-container", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tracking_number"] == "MRKU8195638"
+    assert data["mode"] == "SEA"
+    assert data["carrier"]["code"] == "MSK"
+    assert "events" in data
+    assert len(data["events"]) >= 10
+    assert "MUNDRA" in data["origin"].upper()
+    assert "CAPE TOWN" in data["destination"].upper()
+    assert data["latest_event"] is not None
+    assert data["latest_event"]["is_active"] is True
+    assert data["latest_event"]["raw_status"] == "ACTUAL"
+
+
+def test_api_track_maersk_booking_container_mobile_app():
+    payload = {
+        "billing_no": "275400740",
+        "container_no": "MRKU8195638",
+        "response_type": "mobile-app",
+    }
+    response = client.post("/api/v1/track/booking-container", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["awbNumber"] == "MRKU8195638"
+    assert data["mode"] == "SEA"
+    assert data["carrierCode"] == "MSK"
+    assert "MUNDRA" in data["origin"].upper()
+    assert "CAPE TOWN" in data["destination"].upper()
+    assert "latest_event" not in data
+    assert len(data["events"]) >= 10
+    active_events = [e for e in data["events"] if e.get("is_active")]
+    assert len(active_events) == 1
+    assert active_events[0]["raw_status"] == "ACTUAL"
+
+
+
+
+
 
 
 

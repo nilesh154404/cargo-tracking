@@ -2,21 +2,21 @@ import asyncio
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import httpx
 from app.providers.base import BaseProvider, ProviderResult
+from app.services.location_matcher import match_location
 
 logger = logging.getLogger("shipment_tracking.providers.maersk")
 
 MAERSK_TRACKING_URL = "https://api.maersk.com/synergy/tracking"
 
-# Consumer key for the Maersk Synergy API (can be overridden via env var)
 CONSUMER_KEY = os.environ.get(
     "MAERSK_CONSUMER_KEY",
     "UtMm6JCDcGTnMGErNGvS2B98kt1Wl25H",
 )
 
-# Akamai BM telemetry — session-bound, refresh via env var when expired
 AKAMAI_BM_TELEMETRY = os.environ.get("MAERSK_AKAMAI_TELEMETRY", "")
 
 MAERSK_BASE_HEADERS = {
@@ -27,7 +27,7 @@ MAERSK_BASE_HEADERS = {
     "origin": "https://www.maersk.com",
     "priority": "u=1, i",
     "referer": "https://www.maersk.com/",
-    "sec-ch-ua": '"Chromium";v="154", "Google Chrome";v="154", "Not A(Brand";v="99"',
+    "sec-ch-ua": '"Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"macOS"',
     "sec-fetch-dest": "empty",
@@ -35,11 +35,10 @@ MAERSK_BASE_HEADERS = {
     "sec-fetch-site": "same-site",
     "user-agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
     ),
 }
 
-# Operator code mapping based on container prefix
 OPERATOR_MAP = {
     "MAEU": "MAEU",
     "MRSU": "MAEU",
@@ -51,58 +50,35 @@ OPERATOR_MAP = {
     "SUDU": "MAEU",
 }
 
-# Event code mapping for Maersk milestones
-EVENT_CODE_MAP = {
-    "LOAD": "LOAD",
-    "GATE-IN": "GT_IN",
-    "GATE-OUT": "GT_OUT",
-    "DISCHARGE": "DISCH",
-    "STUFFING": "STUFF",
-    "STRIPPING": "STRIP",
-    "RAIL-DEPARTURE": "RAIL_DEP",
-    "RAIL-ARRIVAL": "RAIL_ARR",
-    "VESSEL-DEPARTURE": "DEP",
-    "VESSEL-ARRIVAL": "ARR",
-    "TRANSSHIPMENT-DISCHARGE": "TS_DISCH",
-    "TRANSSHIPMENT-LOAD": "TS_LOAD",
-    "CUSTOMS-RELEASE": "CUSTOMS",
-    "DELIVERY": "DLV",
-    "EMPTY-RETURN": "MT_RET",
-    "CONTAINER-ARRIVAL": "CNT_ARR",
-    "CONTAINER-DEPARTURE": "CNT_DEP",
-}
+MAERSK_MILESTONE_MAP = [
+    ("GATE-OUT", ("E012", "Empty Equipment Dispatched")),
+    ("GATE-IN", ("E040", "Gate In to Outbound Terminal")),
+    ("LOAD", ("E058", "Loaded on Vessel")),
+    ("CONTAINER DEPARTURE", ("E061", "Vessel Departure")),
+    ("VESSEL-DEPARTURE", ("E061", "Vessel Departure")),
+    ("DEPARTURE", ("E061", "Vessel Departure")),
+    ("CONTAINER ARRIVAL", ("E080", "Vessel Arrival")),
+    ("VESSEL-ARRIVAL", ("E080", "Vessel Arrival")),
+    ("ARRIVAL", ("E080", "Vessel Arrival")),
+    ("DISCHARG", ("E089", "Discharged from Vessel")),
+    ("DISCHARGE", ("E089", "Discharged from Vessel")),
+    ("TRANSSHIPMENT-DISCHARGE", ("E089", "Transshipment Discharged")),
+    ("TRANSSHIPMENT-LOAD", ("E090", "Transshipment Loaded")),
+    ("DELIVERY", ("E106", "Gate Out from Inbound Terminal for Delivery to Consignee")),
+    ("EMPTY-RETURN", ("E138", "Empty Container Returned from Customer")),
+]
 
 
-def _resolve_event_code(activity: str) -> str:
-    """Map Maersk activity type to a standard event code."""
-    activity_upper = (activity or "").upper()
-    for key, code in EVENT_CODE_MAP.items():
-        if key in activity_upper:
-            return code
-    return "INFO"
-
-
-def _determine_overall_status(events: List[Dict]) -> str:
-    """Determine the overall shipment status from the last event."""
-    if not events:
-        return "Unknown"
-
-    last_event = events[-1]
-    code = last_event.get("status_code", "")
-    msg = (last_event.get("raw_status") or "").upper()
-
-    if code in ("DLV", "MT_RET") or "DELIVER" in msg or "EMPTY" in msg:
-        return "Delivered"
-    elif code in ("DEP", "LOAD", "TS_LOAD", "RAIL_DEP", "CNT_DEP"):
-        return "In Transit"
-    elif code in ("ARR", "DISCH", "TS_DISCH", "RAIL_ARR", "CNT_ARR"):
-        return "Arrived"
-    elif code in ("GT_IN", "CUSTOMS"):
-        return "In Terminal"
-    elif code in ("GT_OUT",):
-        return "Gate Out"
-    else:
-        return "In Transit"
+def _parse_maersk_date(date_str: Optional[str]) -> Optional[str]:
+    if not date_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        return str(date_str)
 
 
 class MaerskProvider(BaseProvider):
@@ -122,186 +98,257 @@ class MaerskProvider(BaseProvider):
         tracking_number: str,
         language: str = "en-us",
         force_refresh: bool = False,
+        **kwargs: Any,
     ) -> ProviderResult:
         start_time = time.time()
-        container_id = f"{prefix}{serial}".upper().strip()
+
+        cntr_input = (
+            kwargs.get("container_no")
+            or kwargs.get("cntr_no")
+            or ""
+        ).strip().upper()
+
+        bkg_input = (
+            kwargs.get("mawb_obl_no")
+            or kwargs.get("booking_no")
+            or kwargs.get("billing_no")
+            or kwargs.get("bl_no")
+            or ""
+        ).strip().upper()
+
+        target_container = cntr_input or (tracking_number.strip().upper() if len(tracking_number) >= 10 and tracking_number[:4].isalpha() else "")
+
+        if bkg_input:
+            query_id = bkg_input
+        elif target_container:
+            query_id = target_container
+        else:
+            query_id = tracking_number.strip().upper() or f"{prefix}{serial}".strip().upper()
+
         operator = OPERATOR_MAP.get(prefix.upper(), "MAEU")
 
         try:
             headers = dict(MAERSK_BASE_HEADERS)
-
-            # Add Akamai telemetry if available
             telemetry = os.environ.get("MAERSK_AKAMAI_TELEMETRY", AKAMAI_BM_TELEMETRY)
             if telemetry:
                 headers["akamai-bm-telemetry"] = telemetry
 
-            url = f"{MAERSK_TRACKING_URL}/{container_id}"
+            url = f"{MAERSK_TRACKING_URL}/{query_id}"
             params = {"operator": operator}
+            curl_cmd = self.build_curl_command("GET", f"{url}?operator={operator}", headers=headers)
 
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                resp = await client.get(url, params=params, headers=headers)
-                latency = round((time.time() - start_time) * 1000, 2)
+            data = None
+            response_text = None
+            latency = 0.0
 
-                if resp.status_code == 403:
-                    logger.warning(
-                        f"Maersk API returned 403 (Akamai block) for {container_id}. "
-                        "Attempting browser fallback via Playwright..."
-                    )
-                    data = await self._track_via_browser(container_id)
-                    if not data:
+            try:
+                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                    resp = await client.get(url, params=params, headers=headers)
+                    latency = round((time.time() - start_time) * 1000, 2)
+                    response_text = resp.text
+
+                    if resp.status_code == 200:
+                        data = resp.json()
+                    elif resp.status_code == 403:
+                        logger.info(f"Maersk API returned 403 for {query_id}. Falling back to browser session...")
+                    elif resp.status_code == 404:
                         return ProviderResult(
                             success=False,
                             provider_name=self.name,
-                            status_code=403,
-                            error=(
-                                f"Maersk API returned 403 Forbidden for container {container_id}. "
-                                "Akamai bot protection blocked the request. "
-                                "Please refresh the MAERSK_AKAMAI_TELEMETRY environment variable."
-                            ),
+                            status_code=404,
+                            error=f"No tracking data found for query {query_id} on Maersk",
+                            request_curl=curl_cmd,
+                            response_body=response_text,
                             latency_ms=latency,
                         )
-                elif resp.status_code == 404:
-                    return ProviderResult(
-                        success=False,
-                        provider_name=self.name,
-                        status_code=404,
-                        error=f"No tracking data found for container {container_id} on Maersk",
-                        latency_ms=latency,
-                    )
-                elif resp.status_code != 200:
-                    return ProviderResult(
-                        success=False,
-                        provider_name=self.name,
-                        status_code=resp.status_code,
-                        error=f"Maersk API returned HTTP {resp.status_code}: {resp.text[:300]}",
-                        latency_ms=latency,
-                    )
-                else:
-                    data = resp.json()
+            except Exception as e:
+                logger.debug(f"Direct Maersk request note: {e}")
 
-                # Parse containers array (API returns tracking for all containers in shipment)
-                containers = data.get("containers", [])
+            if not data:
+                data = await self._track_via_browser(query_id)
+                latency = round((time.time() - start_time) * 1000, 2)
 
-                # Find matching container
-                target_container = None
-                for c in containers:
-                    if c.get("container_num", "").upper() == container_id:
-                        target_container = c
-                        break
-                if not target_container and containers:
-                    target_container = containers[0]
-
-                if not target_container:
-                    return ProviderResult(
-                        success=False,
-                        provider_name=self.name,
-                        status_code=404,
-                        error=f"Container {container_id} not found in Maersk response",
-                        latency_ms=latency,
-                        raw_data=data,
-                    )
-
-                # Extract origin, destination from top-level or container
-                origin_info = data.get("origin", {})
-                dest_info = data.get("destination", {})
-                origin = origin_info.get("city") or origin_info.get("terminal") or data.get("origin_name")
-                destination = dest_info.get("city") or dest_info.get("terminal") or data.get("destination_name")
-
-                # Vessel info
-                vessel_name = data.get("vessel_name") or data.get("vessel")
-
-                # Parse events/milestones
-                raw_events = target_container.get("locations", [])
-                parsed_events: List[Dict[str, Any]] = []
-
-                for location in raw_events:
-                    loc_name = location.get("city") or location.get("terminal") or location.get("name", "")
-                    loc_country = location.get("country") or ""
-                    station_str = f"{loc_name}, {loc_country}" if loc_country else loc_name
-
-                    events = location.get("events", [])
-                    for ev in events:
-                        activity = ev.get("activity") or ev.get("event") or "Status Update"
-                        event_date = ev.get("date") or ev.get("expected_date") or ev.get("event_time")
-                        vessel = ev.get("vessel_name") or vessel_name
-                        voyage = ev.get("voyage_num") or ""
-
-                        flight_info = None
-                        if vessel:
-                            flight_info = f"Vessel: {vessel}"
-                            if voyage:
-                                flight_info += f" / Voyage: {voyage}"
-
-                        status_code = _resolve_event_code(activity)
-
-                        parsed_events.append({
-                            "station": station_str,
-                            "status_code": status_code,
-                            "status_message": activity,
-                            "event_time": event_date,
-                            "flight_info": flight_info,
-                            "pieces": 1,
-                            "weight": None,
-                            "raw_status": activity,
-                        })
-
-                if not parsed_events:
-                    return ProviderResult(
-                        success=False,
-                        provider_name=self.name,
-                        status_code=404,
-                        error=f"No milestone events found for container {container_id} on Maersk",
-                        latency_ms=latency,
-                        raw_data=data,
-                    )
-
-                # Set origin/destination from events if not in top-level
-                if not origin and parsed_events:
-                    origin = parsed_events[0]["station"]
-                if not destination and parsed_events:
-                    destination = parsed_events[-1]["station"]
-
-                overall_status = _determine_overall_status(parsed_events)
-                latest_event = parsed_events[-1]
-
-                # Container details
-                container_type = target_container.get("container_type") or target_container.get("iso_code") or ""
-                container_size = target_container.get("container_size") or ""
-
+            if not data:
                 return ProviderResult(
-                    success=True,
+                    success=False,
                     provider_name=self.name,
-                    status_code=200,
-                    status=overall_status,
-                    origin=origin,
-                    destination=destination,
-                    pieces=1,
-                    weight={"unit": "kg", "value": 28000.0},
-                    volume=76.2 if "40" in container_size or "40" in container_type else 33.2,
-                    events=parsed_events,
-                    latest_event=latest_event,
-                    raw_data={
-                        "carrier": "Maersk Line",
-                        "container_number": container_id,
-                        "container_type": container_type,
-                        "container_size": container_size,
-                        "vessel_name": vessel_name,
-                        "events_count": len(parsed_events),
-                        "source": "Maersk Synergy Tracking API v2",
-                    },
+                    status_code=404,
+                    error=f"No tracking data found for query {query_id} on Maersk",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
                     latency_ms=latency,
                 )
 
-        except httpx.RequestError as exc:
-            latency = round((time.time() - start_time) * 1000, 2)
-            logger.error(f"Network error connecting to Maersk API: {exc}")
+            containers = data.get("containers", [])
+            target_container_obj = None
+
+            if containers:
+                if target_container:
+                    for c in containers:
+                        c_num = (c.get("container_num") or "").strip().upper()
+                        if c_num == target_container:
+                            target_container_obj = c
+                            break
+                if not target_container_obj:
+                    target_container_obj = containers[0]
+
+            if not target_container_obj:
+                return ProviderResult(
+                    success=False,
+                    provider_name=self.name,
+                    status_code=404,
+                    error=f"Container {target_container} not found in Maersk response for {query_id}",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
+                    latency_ms=latency,
+                    raw_data=data,
+                )
+
+            final_container_no = (target_container_obj.get("container_num") or target_container or query_id).strip().upper()
+
+            origin_obj = data.get("origin") or {}
+            orig_city = origin_obj.get("city") or origin_obj.get("terminal") or data.get("origin_name") or ""
+            orig_country = origin_obj.get("country") or ""
+            origin = f"{orig_city}, {orig_country}".strip(", ") if orig_country else orig_city
+
+            dest_obj = data.get("destination") or {}
+            dest_city = dest_obj.get("city") or dest_obj.get("terminal") or data.get("destination_name") or ""
+            dest_country = dest_obj.get("country") or ""
+            destination = f"{dest_city}, {dest_country}".strip(", ") if dest_country else dest_city
+
+            raw_locations = target_container_obj.get("locations", [])
+            raw_events: List[Dict[str, Any]] = []
+
+            for location in raw_locations:
+                loc_name = location.get("city") or location.get("terminal") or location.get("name", "")
+                loc_country = location.get("country") or ""
+                terminal = location.get("terminal") or ""
+                loc_code = location.get("location_code")
+
+                if terminal and loc_country:
+                    station_str = f"{loc_name}, {loc_country} ({terminal})"
+                elif loc_country:
+                    station_str = f"{loc_name}, {loc_country}"
+                else:
+                    station_str = loc_name
+
+                events = location.get("events", [])
+                for ev in events:
+                    activity = (ev.get("activity") or ev.get("event") or "Status Update").strip()
+                    event_date_raw = ev.get("event_time") or ev.get("actual_time") or ev.get("expected_time") or ev.get("date")
+                    iso_time = _parse_maersk_date(event_date_raw) or datetime.now(timezone.utc).isoformat()
+                    vessel = ev.get("vessel_name")
+                    voyage = ev.get("voyage_num") or ""
+
+                    if vessel and voyage:
+                        flight_info = f"{final_container_no} | {vessel} (Voyage {voyage})"
+                    elif vessel:
+                        flight_info = f"{final_container_no} | {vessel}"
+                    else:
+                        flight_info = final_container_no
+
+                    act_upper = activity.upper()
+                    status_code = "INFO"
+                    status_msg = activity
+                    for kw, (code, canonical_msg) in MAERSK_MILESTONE_MAP:
+                        if kw in act_upper:
+                            status_code = code
+                            status_msg = canonical_msg
+                            break
+
+                    time_type = (ev.get("event_time_type") or "").upper()
+                    if time_type == "ACTUAL":
+                        raw_status = "ACTUAL"
+                    elif time_type in ("EXPECTED", "ESTIMATED"):
+                        raw_status = "ESTIMATED"
+                    else:
+                        try:
+                            dt_check = datetime.fromisoformat(str(iso_time).replace("Z", "+00:00"))
+                            raw_status = "ESTIMATED" if dt_check > datetime.now(timezone.utc) else "ACTUAL"
+                        except Exception:
+                            raw_status = "ACTUAL"
+
+                    coords = (
+                        match_location(loc_code, "SEA")
+                        or match_location(station_str, "SEA")
+                        or match_location(loc_name, "SEA")
+                    )
+
+                    raw_events.append({
+                        "station": station_str,
+                        "status_code": status_code,
+                        "status_message": status_msg,
+                        "event_time": iso_time,
+                        "flight_info": flight_info,
+                        "pieces": 1,
+                        "weight": 28000.0,
+                        "raw_status": raw_status,
+                        "coordinates": coords,
+                    })
+
+            if not raw_events:
+                return ProviderResult(
+                    success=False,
+                    provider_name=self.name,
+                    status_code=404,
+                    error=f"No milestone events found for container {final_container_no} on Maersk",
+                    request_curl=curl_cmd,
+                    response_body=response_text,
+                    latency_ms=latency,
+                    raw_data=data,
+                )
+
+            actual_events = [e for e in raw_events if e["raw_status"] == "ACTUAL"]
+            active_target = actual_events[-1] if actual_events else raw_events[-1]
+
+            for e in raw_events:
+                is_act = (e is active_target)
+                e["active"] = is_act
+                e["is_active"] = is_act
+
+            raw_events.sort(key=lambda x: x.get("event_time") or "", reverse=True)
+
+            final_status = "In Transit"
+            if active_target:
+                code = active_target.get("status_code")
+                if code in ("E106", "E138", "DLV"):
+                    final_status = "Delivered"
+                elif code in ("E089", "DISCH"):
+                    final_status = "Discharged"
+                elif code in ("E040", "GT_IN"):
+                    final_status = "Gate In to Outbound Terminal"
+                elif code in ("E058", "E061", "E090", "LOAD"):
+                    final_status = "In Transit"
+
+            container_type = target_container_obj.get("container_type") or target_container_obj.get("iso_code") or ""
+            container_size = target_container_obj.get("container_size") or ""
+
             return ProviderResult(
-                success=False,
+                success=True,
                 provider_name=self.name,
-                status_code=500,
-                error=f"Network exception connecting to Maersk API: {str(exc)}",
+                status_code=200,
+                status=final_status,
+                origin=origin or (raw_events[-1]["station"] if raw_events else None),
+                destination=destination or (raw_events[0]["station"] if raw_events else None),
+                pieces=1,
+                weight={"unit": "kg", "value": 28000.0},
+                volume=76.2 if "40" in container_size or "40" in container_type else 33.2,
+                events=raw_events,
+                latest_event=active_target,
+                raw_data={
+                    "carrier": "Maersk",
+                    "container_number": final_container_no,
+                    "billing_no": data.get("tpdoc_num") or query_id,
+                    "container_type": container_type,
+                    "container_size": container_size,
+                    "events_count": len(raw_events),
+                    "source": "Maersk Synergy Tracking API v2",
+                },
+                request_curl=curl_cmd,
+                response_body=response_text,
                 latency_ms=latency,
             )
+
         except Exception as exc:
             latency = round((time.time() - start_time) * 1000, 2)
             logger.error(f"Unexpected error in Maersk provider: {exc}")
@@ -313,8 +360,8 @@ class MaerskProvider(BaseProvider):
                 latency_ms=latency,
             )
 
-    async def _track_via_browser(self, container_id: str) -> Optional[Dict[str, Any]]:
-        """Fallback browser session to bypass Akamai Bot Manager using Playwright."""
+    async def _track_via_browser(self, query_id: str) -> Optional[Dict[str, Any]]:
+        """Fallback browser session to bypass Akamai Bot Manager using local Chrome."""
         try:
             from playwright.async_api import async_playwright
         except ImportError:
@@ -336,7 +383,7 @@ class MaerskProvider(BaseProvider):
                         "--no-sandbox",
                         "--disable-setuid-sandbox",
                         "--disable-blink-features=AutomationControlled",
-                    ]
+                    ],
                 }
                 if executable_path:
                     launch_kwargs["executable_path"] = executable_path
@@ -352,32 +399,33 @@ class MaerskProvider(BaseProvider):
                 page = await context.new_page()
 
                 captured: Dict[str, Any] = {}
+                done_event = asyncio.Event()
 
                 async def handle_response(response):
                     url = response.url
-                    if f"tracking/{container_id}" in url or f"tracking/{container_id.upper()}" in url:
+                    if "synergy/tracking" in url:
                         try:
                             content_type = response.headers.get("content-type", "")
                             if "json" in content_type:
                                 body = await response.json()
                                 if body and isinstance(body, dict) and "containers" in body:
                                     captured["data"] = body
+                                    done_event.set()
                         except Exception:
                             pass
 
                 page.on("response", handle_response)
 
-                nav_url = f"https://www.maersk.com/tracking/{container_id}"
+                nav_url = f"https://www.maersk.com/tracking/{query_id}"
                 try:
-                    await page.goto(nav_url, wait_until="networkidle", timeout=35000)
+                    await page.goto(nav_url, wait_until="domcontentloaded", timeout=40000)
                 except Exception as e:
                     logger.debug(f"Maersk browser navigation notice: {e}")
 
-                # Wait for data interception
-                for _ in range(6):
-                    if "data" in captured:
-                        break
-                    await asyncio.sleep(1.0)
+                try:
+                    await asyncio.wait_for(done_event.wait(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    pass
 
                 await browser.close()
                 return captured.get("data")

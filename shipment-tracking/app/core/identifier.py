@@ -676,6 +676,29 @@ def parse_and_identify(
             relatable_message=None,
         )
 
+    # 0c. Maersk (MSK) identification (containers, 9-digit B/L bookings, or carrier code override)
+    is_maersk_carrier = (
+        (carrier_code_override and carrier_code_override.strip().upper() in ("MSK", "MAERSK", "MAEU"))
+        or cleaned.startswith(("MAEU", "MRKU", "MSKU", "MRSU", "MRSV", "MVIU", "MWCU"))
+        or (re.match(r"^\d{9}$", cleaned) and (explicit_mode in (None, "SEA") or not carrier_code_override))
+    )
+    if is_maersk_carrier:
+        prefix = cleaned[:4] if len(cleaned) > 4 and cleaned[:4].isalpha() else "MAEU"
+        serial = cleaned[4:] if len(cleaned) > 4 and cleaned[:4].isalpha() else cleaned
+        return IdentificationResult(
+            mode="SEA",
+            clean_tracking_number=cleaned,
+            carrier_code="MSK",
+            carrier_name="Maersk",
+            prefix=prefix,
+            serial_number=serial,
+            primary_provider="maersk",
+            fallback_providers=["generic_ocean"],
+            is_valid_format=True,
+            is_supported=True,
+            relatable_message=None,
+        )
+
     # 1. SEA Container detection: Standard ISO 6346 container (4 alpha + 6 or 7 digits, e.g. MSMU6484830, AKLU1234567)
     clean_alphanumeric = re.sub(r"[^A-Z0-9]", "", cleaned)
     container_match = re.match(r"^([A-Z]{4})(\d{6,7})$", clean_alphanumeric)
