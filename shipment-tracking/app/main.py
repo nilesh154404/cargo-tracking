@@ -54,6 +54,7 @@ from app.schemas.tracking import (
     AdminTenantCreatedResponse,
     AdminResetTenantPasswordRequest,
     AdminResetPasswordResponse,
+    BookingContainerTrackingRequest,
 )
 from app.agents.tracking_agent import TrackingOrchestratorAgent
 from app.providers import list_providers
@@ -690,6 +691,113 @@ async def track_shipment_get(
         carrier_code=result.carrier.code,
         credits_consumed=1,
         provider_used=result.agent_trail.final_provider_used,
+        status=result.status,
+        request_ip=request.client.host if request.client else None,
+    )
+    db.add(usage)
+    db.commit()
+
+    if response_type == "mobile-app":
+        return to_mobile_app_response(result)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Search tracking by Container Number and Booking / Tracking Number
+# ---------------------------------------------------------------------------
+
+@app.post("/api/v1/track/booking-container", summary="Live track container by Container No and Booking / Tracking No")
+@app.post("/api/v1/track/container-booking", include_in_schema=False)
+async def track_booking_container_post(
+    req: BookingContainerTrackingRequest,
+    request: Request,
+    response_type: Optional[str] = Query(None, description="Optional response format override: 'standard' or 'mobile-app'"),
+    auth: AuthContext = Depends(require_scope("tracking:live")),
+    db: Session = Depends(get_db),
+):
+    """
+    Live track a sea shipment using Container Number and Booking / Tracking Number.
+    Queries ONE Line's official Voyage List & Container COP Events endpoints:
+    - Voyage List: https://ecomm.one-line.com/api/v2/edh/vessel/track-and-trace/voyage-list
+    - COP Events: https://ecomm.one-line.com/api/v2/edh/containers/track-and-trace/cop-events
+    Converts and returns in canonical standard schema or lightweight mobile-app schema.
+    Meters 1 credit against tenant monthly subscription quota.
+    """
+    tenant = auth.tenant
+    _check_and_deduct_quota(tenant, db, credits=1)
+
+    effective_response_type = req.response_type or response_type or "standard"
+    booking_no = req.booking_no or req.tracking_no
+    container_no = req.container_no
+
+    result = await orchestrator.execute_tracking(
+        query=container_no,
+        container_no=container_no,
+        mawb_obl_no=booking_no,
+        explicit_mode="SEA",
+        carrier_code="ONE",
+        carrier_name="Ocean Network Express",
+        tenant_id=tenant.id,
+        db=db,
+    )
+
+    usage = UsageRecord(
+        tenant_id=tenant.id,
+        api_key_id=auth.api_key.id if auth.api_key else None,
+        tracking_number=result.tracking_number,
+        transport_mode=result.mode,
+        carrier_code=result.carrier.code,
+        credits_consumed=1,
+        provider_used=result.agent_trail.final_provider_used or "one_line",
+        status=result.status,
+        request_ip=request.client.host if request.client else None,
+    )
+    db.add(usage)
+    db.commit()
+
+    if effective_response_type == "mobile-app":
+        return to_mobile_app_response(result)
+    return result
+
+
+@app.get("/api/v1/track/booking-container", summary="Live track container by Container No and Booking / Tracking No (GET)")
+@app.get("/api/v1/track/container-booking", include_in_schema=False)
+async def track_booking_container_get(
+    request: Request,
+    container_no: str = Query(..., description="Container Number (e.g. NYKU4850737)"),
+    booking_no: Optional[str] = Query(None, description="Booking Number / Tracking Number (e.g. ISTG20746300)"),
+    tracking_no: Optional[str] = Query(None, description="Tracking Number alias for booking_no"),
+    response_type: str = Query("standard", description="Response format: 'standard' or 'mobile-app'"),
+    auth: AuthContext = Depends(require_scope("tracking:live")),
+    db: Session = Depends(get_db),
+):
+    """
+    GET endpoint to track a container by Container Number and Booking / Tracking Number.
+    """
+    tenant = auth.tenant
+    _check_and_deduct_quota(tenant, db, credits=1)
+
+    effective_bkg = booking_no or tracking_no
+
+    result = await orchestrator.execute_tracking(
+        query=container_no,
+        container_no=container_no,
+        mawb_obl_no=effective_bkg,
+        explicit_mode="SEA",
+        carrier_code="ONE",
+        carrier_name="Ocean Network Express",
+        tenant_id=tenant.id,
+        db=db,
+    )
+
+    usage = UsageRecord(
+        tenant_id=tenant.id,
+        api_key_id=auth.api_key.id if auth.api_key else None,
+        tracking_number=result.tracking_number,
+        transport_mode=result.mode,
+        carrier_code=result.carrier.code,
+        credits_consumed=1,
+        provider_used=result.agent_trail.final_provider_used or "one_line",
         status=result.status,
         request_ip=request.client.host if request.client else None,
     )

@@ -181,3 +181,53 @@ def test_api_history_events_descending_order():
         if t_curr and t_next:
             assert t_curr >= t_next
 
+
+def test_api_track_booking_container_standard():
+    payload = {
+        "booking_no": "ISTG20746300",
+        "container_no": "NYKU4850737",
+        "response_type": "standard",
+    }
+    response = client.post("/api/v1/track/booking-container", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tracking_number"] == "NYKU4850737"
+    assert data["mode"] == "SEA"
+    assert data["carrier"]["code"] == "ONE"
+    assert "events" in data
+    assert len(data["events"]) >= 4
+    assert data["latest_event"] is not None
+    assert data["latest_event"]["is_active"] is True
+    assert data["origin"] == "ISTANBUL, TURKEY"
+    assert data["destination"] == "SAVANNAH, GA, UNITED STATES"
+
+
+def test_api_track_booking_container_mobile_app():
+    payload = {
+        "booking_no": "ISTG20746300",
+        "container_no": "NYKU4850737",
+        "response_type": "mobile-app",
+    }
+    response = client.post("/api/v1/track/booking-container", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["awbNumber"] == "NYKU4850737"
+    assert data["mode"] == "SEA"
+    assert data["carrierCode"] == "ONE"
+    assert data["origin"] == "ISTANBUL, TURKEY"
+    assert data["destination"] == "SAVANNAH, GA, UNITED STATES"
+    assert "latest_event" not in data
+    assert len(data["events"]) >= 4
+    active_events = [e for e in data["events"] if e.get("is_active")]
+    assert len(active_events) == 1
+    assert active_events[0]["raw_status"] == "ACTUAL"
+
+
+def test_api_track_booking_container_get():
+    response = client.get("/api/v1/track/booking-container?container_no=NYKU4850737&booking_no=ISTG20746300")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tracking_number"] == "NYKU4850737"
+    assert len(data["events"]) >= 4
+
+

@@ -539,4 +539,74 @@ class AdminResetPasswordResponse(BaseModel):
     new_password: str
 
 
+class BookingContainerTrackingRequest(BaseModel):
+    booking_no: Optional[str] = Field(
+        default=None,
+        description="Booking Number / Bill of Lading Number / Tracking Number (e.g. ISTG20746300)",
+        examples=["ISTG20746300"],
+    )
+    tracking_no: Optional[str] = Field(
+        default=None,
+        description="Tracking Number alias for booking_no (e.g. ISTG20746300)",
+        examples=["ISTG20746300"],
+    )
+    container_no: str = Field(
+        ...,
+        description="Container Number (e.g. NYKU4850737, ONEU5436776)",
+        examples=["NYKU4850737"],
+    )
+    response_type: Optional[str] = Field(
+        default="standard",
+        description="Response format: 'standard' or 'mobile-app'",
+        examples=["standard"],
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "booking_no": "ISTG20746300",
+                "container_no": "NYKU4850737",
+                "response_type": "standard",
+            }
+        }
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_inputs(cls, data: Any):
+        if isinstance(data, dict):
+            b_no = (
+                data.get("booking_no")
+                or data.get("tracking_no")
+                or data.get("tracking_number")
+                or data.get("bkg_no")
+                or data.get("BOOKING_NO")
+                or data.get("TRACKING_NO")
+                or data.get("MAWB_OBL_NO")
+                or data.get("mawb_obl_no")
+            )
+            c_no = (
+                data.get("container_no")
+                or data.get("container_number")
+                or data.get("cntr_no")
+                or data.get("CONTAINER_NO")
+                or data.get("containerNo")
+            )
+            r_type = (
+                data.get("response_type")
+                or data.get("responseType")
+                or data.get("RESPONSE_TYPE")
+                or "standard"
+            )
+            if not c_no:
+                raise ValueError("container_no is required to track by container and booking number.")
+            return {
+                "booking_no": str(b_no).strip() if b_no else None,
+                "tracking_no": str(b_no).strip() if b_no else None,
+                "container_no": str(c_no).strip(),
+                "response_type": str(r_type),
+            }
+        return data
+
+
 

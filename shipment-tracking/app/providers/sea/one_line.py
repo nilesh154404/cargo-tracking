@@ -11,6 +11,7 @@ logger = logging.getLogger("shipment_tracking.providers.one_line")
 
 ONE_API_SEARCH_URL = "https://ecomm.one-line.com/api/v2/edh/containers/track-and-trace/search"
 ONE_API_COP_EVENTS_URL = "https://ecomm.one-line.com/api/v2/edh/containers/track-and-trace/cop-events"
+ONE_API_VOYAGE_LIST_URL = "https://ecomm.one-line.com/api/v2/edh/vessel/track-and-trace/voyage-list"
 
 ONE_HEADERS = {
     "accept": "application/json, text/plain, */*",
@@ -21,9 +22,9 @@ ONE_HEADERS = {
     "referer": "https://www.one-line.com/",
     "user-agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
     ),
-    "sec-ch-ua": '"Google Chrome";v="120", "Chromium";v="120", "Not(A:Brand";v="24"',
+    "sec-ch-ua": '"Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"macOS"',
     "sec-fetch-dest": "empty",
@@ -100,6 +101,15 @@ class OneLineProvider(BaseProvider):
         # Check if booking / OBL number or container number passed in kwargs
         mawb_obl_no = kwargs.get("mawb_obl_no")
         container_no = kwargs.get("container_no")
+
+        # If both booking_no and container_no are provided, prioritize direct voyage & COP tracking
+        b_no = mawb_obl_no or kwargs.get("booking_no") or kwargs.get("tracking_no")
+        c_no = container_no or (raw_target if (bool(re.match(r"^[A-Z]{4}\d{7}$", raw_target)) or raw_target.startswith("ONEU")) else None)
+        if b_no and c_no and b_no != c_no:
+            kwargs_clean = {k: v for k, v in kwargs.items() if k not in ("booking_no", "container_no")}
+            cop_res = await self.track_cop_and_voyage(booking_no=b_no, container_no=c_no, **kwargs_clean)
+            if cop_res.success:
+                return cop_res
 
         attempts_plan: List[tuple[str, str]] = []
         if search_type_override in ("CNTR_NO", "BKG_NO", "PO_NO"):
@@ -488,5 +498,223 @@ class OneLineProvider(BaseProvider):
             raw_data=raw_data_summary,
             request_curl=effective_curl,
             response_body=resp_text,
+            latency_ms=latency_ms,
+        )
+
+    async def track_cop_and_voyage(
+        self,
+        booking_no: str,
+        container_no: str,
+        **kwargs,
+    ) -> ProviderResult:
+        """
+        Direct Live Tracking using ONE Line Voyage List and COP Events endpoints:
+        - GET https://ecomm.one-line.com/api/v2/edh/vessel/track-and-trace/voyage-list?booking_no={booking_no}
+        - GET https://ecomm.one-line.com/api/v2/edh/containers/track-and-trace/cop-events?booking_no={booking_no}&container_no={container_no}
+        """
+        start_time = time.time()
+        booking_clean = str(booking_no).strip().upper()
+        container_clean = str(container_no).strip().upper()
+
+        voyage_data: List[Dict[str, Any]] = []
+        cop_events: List[Dict[str, Any]] = []
+        voyage_curl = None
+        cop_curl = None
+        voyage_status = None
+        cop_status = None
+        last_error = None
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # 1. Fetch voyage list
+            try:
+                v_corr_id = str(uuid.uuid4())
+                v_headers = {**ONE_HEADERS, "x-correlation-id": v_corr_id}
+                v_url = f"{ONE_API_VOYAGE_LIST_URL}?booking_no={booking_clean}"
+                voyage_curl = self.build_curl_command(method="GET", url=v_url, headers=v_headers)
+                v_resp = await client.get(
+                    ONE_API_VOYAGE_LIST_URL,
+                    params={"booking_no": booking_clean},
+                    headers=v_headers,
+                )
+                voyage_status = v_resp.status_code
+                if v_resp.status_code in (200, 201):
+                    v_json = v_resp.json()
+                    voyage_data = v_json.get("data") or []
+            except Exception as e:
+                logger.warning(f"Error fetching voyage-list for {booking_clean}: {e}")
+                last_error = str(e)
+
+            # 2. Fetch container COP events
+            try:
+                cop_corr_id = str(uuid.uuid4())
+                cop_headers = {**ONE_HEADERS, "x-correlation-id": cop_corr_id}
+                cop_url = f"{ONE_API_COP_EVENTS_URL}?booking_no={booking_clean}&container_no={container_clean}"
+                cop_curl = self.build_curl_command(method="GET", url=cop_url, headers=cop_headers)
+                c_resp = await client.get(
+                    ONE_API_COP_EVENTS_URL,
+                    params={"booking_no": booking_clean, "container_no": container_clean},
+                    headers=cop_headers,
+                )
+                cop_status = c_resp.status_code
+                if c_resp.status_code in (200, 201):
+                    c_json = c_resp.json()
+                    cop_events = c_json.get("data") or []
+            except Exception as e:
+                logger.warning(f"Error fetching cop-events for {booking_clean}/{container_clean}: {e}")
+                last_error = str(e)
+
+        latency_ms = round((time.time() - start_time) * 1000, 2)
+
+        if not cop_events and not voyage_data:
+            return ProviderResult(
+                success=False,
+                provider_name=self.name,
+                status_code=cop_status or voyage_status or 404,
+                status="NOT_FOUND",
+                error=last_error or f"No tracking records found for booking {booking_clean} and container {container_clean} on ONE.",
+                request_curl=cop_curl or voyage_curl,
+                latency_ms=latency_ms,
+            )
+
+        # Parse voyage info
+        origin = None
+        destination = None
+        vessel_name = None
+        voyage_no = None
+
+        if voyage_data and isinstance(voyage_data, list):
+            first_seg = voyage_data[0]
+            last_seg = voyage_data[-1]
+            vessel_name = first_seg.get("vesselEngName") or first_seg.get("vesselCode")
+            voyage_no = first_seg.get("scheduleVoyageNumber")
+
+            pol = first_seg.get("pol") or {}
+            origin = pol.get("locationName")
+
+            pod = last_seg.get("pod") or {}
+            destination = pod.get("locationName")
+
+        # Parse COP events into normalized events
+        events_list: List[Dict[str, Any]] = []
+        for ev in cop_events:
+            ev_name = ev.get("eventName") or "Milestone"
+            date_iso = ev.get("eventDate") or ev.get("eventLocalPortDate")
+            matrix_id = ev.get("matrixId") or ev.get("opusCode") or "EVENT"
+            trigger = (ev.get("triggerType") or "ACTUAL").upper()
+
+            loc = ev.get("location") or {}
+            loc_name = loc.get("locationName") or ev.get("nodeCode") or ""
+            country_name = loc.get("countryName")
+            station_str = loc_name
+            if country_name and country_name not in station_str:
+                station_str = f"{station_str}, {country_name}" if station_str else country_name
+
+            yard = ev.get("yard") or {}
+            yard_name = yard.get("yardName")
+            if yard_name:
+                station_str = f"{station_str} ({yard_name})" if station_str else yard_name
+
+            coords = match_location(loc_name or station_str, "SEA")
+
+            ev_vessel = ev.get("vessel") or ev.get("edhVessel") or {}
+            v_n = ev_vessel.get("name") or vessel_name
+            v_voy = ev_vessel.get("voyNo") or voyage_no
+            flight_info_str = f"{container_clean}"
+            if v_n:
+                flight_info_str += f" | {v_n}"
+                if v_voy:
+                    flight_info_str += f" (Voyage {v_voy})"
+
+            events_list.append({
+                "station": station_str,
+                "status_code": matrix_id,
+                "status_message": ev_name,
+                "event_time": date_iso,
+                "flight_info": flight_info_str,
+                "pieces": 1,
+                "weight": None,
+                "raw_status": trigger,
+                "coordinates": coords,
+                "active": False,
+                "is_active": False,
+            })
+
+        # If cop_events was empty but voyage_data had POL/POD, create route milestones
+        if not events_list and voyage_data:
+            for seg in voyage_data:
+                pol = seg.get("pol") or {}
+                pod = seg.get("pod") or {}
+                v_name = seg.get("vesselEngName")
+                v_voy = seg.get("scheduleVoyageNumber")
+                if pol.get("locationName"):
+                    events_list.append({
+                        "station": pol.get("locationName"),
+                        "status_code": "E061",
+                        "status_message": "Vessel Departure from Port of Loading",
+                        "event_time": pol.get("date"),
+                        "flight_info": f"{container_clean} | {v_name} (Voyage {v_voy})",
+                        "raw_status": "ACTUAL" if pol.get("isActual") else "ESTIMATED",
+                        "coordinates": match_location(pol.get("locationName"), "SEA"),
+                        "active": False,
+                        "is_active": False,
+                    })
+                if pod.get("locationName"):
+                    events_list.append({
+                        "station": pod.get("locationName"),
+                        "status_code": "E089",
+                        "status_message": "Vessel Arrival at Port of Discharge",
+                        "event_time": pod.get("arrivalDate") or pod.get("berthingDate"),
+                        "flight_info": f"{container_clean} | {v_name} (Voyage {v_voy})",
+                        "raw_status": "ACTUAL" if pod.get("isArrivalActual") else "ESTIMATED",
+                        "coordinates": match_location(pod.get("locationName"), "SEA"),
+                        "active": False,
+                        "is_active": False,
+                    })
+
+        # Find latest ACTUAL milestone and mark active
+        actual_events = [ev for ev in events_list if ev.get("raw_status") == "ACTUAL"]
+        active_ev = actual_events[-1] if actual_events else (events_list[0] if events_list else None)
+        if active_ev:
+            active_ev["active"] = True
+            active_ev["is_active"] = True
+
+        latest_status = active_ev.get("status_message") if active_ev else "In Transit"
+
+        effective_curl = f"# --- Step 1: ONE Line Voyage List API ---\n{voyage_curl}"
+        if cop_curl:
+            effective_curl = f"{effective_curl}\n\n# --- Step 2: ONE Line Detailed COP Events API ---\n{cop_curl}"
+
+        raw_data = {
+            "source": "Ocean Network Express (ONE) - Voyage & COP Events Live Gateway",
+            "booking_no": booking_clean,
+            "container_no": container_clean,
+            "vessel_name": vessel_name,
+            "voyage_no": voyage_no,
+            "voyage_list": voyage_data,
+            "cop_events": cop_events,
+            "modal_popup": {
+                "title": f"📍 ONE Tracking — {container_clean}",
+                "carrier": "Ocean Network Express (ONE)",
+                "container": container_clean,
+                "booking_no": booking_clean,
+                "official_url": f"https://ecomm.one-line.com/one-ecom/manage-shipment/cargo-tracking?number={container_clean}",
+                "containertracking_url": f"https://containertracking.net/track/oneu.html?c={container_clean}",
+                "direct_tracking_url": f"https://ecomm.one-line.com/one-ecom/manage-shipment/cargo-tracking?number={container_clean}",
+                "allows_iframe": False,
+            },
+        }
+
+        return ProviderResult(
+            success=True,
+            provider_name=self.name,
+            status_code=200,
+            status=latest_status,
+            origin=origin,
+            destination=destination,
+            pieces=1,
+            events=events_list,
+            latest_event=active_ev,
+            raw_data=raw_data,
+            request_curl=effective_curl,
             latency_ms=latency_ms,
         )
